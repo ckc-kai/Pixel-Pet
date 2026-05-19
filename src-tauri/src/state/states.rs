@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::state::machine::AccumulatorTier;
+
 /// Visible pet state. Stays `Copy + Hash + Eq` so transition tables can use
 /// it directly as a key (see `machine::TRANSITIONS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -86,6 +88,12 @@ pub struct Ctx {
     pub(crate) idle_seconds: u64,
     /// Most recent meal trigger fired, to debounce same-meal repeats.
     pub(crate) last_meal: Option<MealKind>,
+    /// Highest accumulator tier reached this work session — used by the
+    /// `Eating → {Sleep,Tired,Working}` re-evaluation since the FSM itself
+    /// holds no real thresholds. Set by the orchestrator (A3/A5) via
+    /// [`Ctx::mark_tier`] when emitting tier-crossing triggers; reset on
+    /// `SpacedOut` entry. See `machine.rs` module doc.
+    pub(crate) tier: AccumulatorTier,
 }
 
 impl Ctx {
