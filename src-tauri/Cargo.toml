@@ -41,10 +41,16 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 # production paths.
 tempfile = "3"
 
-# NOTE: tauri-specta / specta dependencies are intentionally deferred to agent
-# A5 (see docs/agent-team-plan.md §4.5). Phase 0 keeps the dep tree minimal so
-# `cargo check` is fast; A5 will pin compatible versions when wiring the
-# typed IPC client.
+# Typed IPC bindings — generated at debug-build time into
+# `../src/lib/types/bindings.ts` (gitignored).
+#
+# Pinned to `2.0.0-rc` because tauri-specta v2 has not yet cut a stable
+# release; this is the upstream-recommended pin so patch RCs roll forward.
+# Spec said `"2"`, but Cargo's SemVer rules will not pick a pre-release for
+# the `2` requirement — see A5 report for context.
+specta = { version = "2.0.0-rc", features = ["derive"] }
+tauri-specta = { version = "2.0.0-rc", features = ["derive", "typescript"] }
+specta-typescript = "0.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # CGEventSource.secondsSinceLastEventType — see architecture.md §5.1.

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Visible pet state. Stays `Copy + Hash + Eq` so transition tables can use
 /// it directly as a key (see `machine::TRANSITIONS`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum PetState {
     Startup,

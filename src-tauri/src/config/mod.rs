@@ -40,7 +40,7 @@ pub const BUNDLE_ID: &str = "com.kaicheng.pixelpet";
 ///
 /// `#[serde(default)]` on every section makes the loader tolerant of missing
 /// fields — the v0 → v1 migration story until a real schema break happens.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
     // Field-level `#[serde(default)]` overrides the container default for this
@@ -55,7 +55,7 @@ pub struct Settings {
     pub window: WindowSettings,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct ActivitySettings {
     pub idle_threshold_seconds: u32,
@@ -63,7 +63,7 @@ pub struct ActivitySettings {
     pub spaced_out_idle_minutes: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct WorkSettings {
     pub stretch_at_minutes: u32,
@@ -75,7 +75,7 @@ pub struct WorkSettings {
 
 /// Meal trigger times. `HH:MM` 24-hour format. Parsing/validation lives in
 /// the consumer (agent A2 / A4); this struct just carries the string.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct MealSettings {
     pub breakfast: String,
@@ -83,7 +83,7 @@ pub struct MealSettings {
     pub dinner: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct WindowSettings {
     pub x: i32,

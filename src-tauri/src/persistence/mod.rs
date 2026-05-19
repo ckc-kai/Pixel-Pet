@@ -19,7 +19,7 @@ pub mod settings;
 /// `palette[0]` is the transparent slot by convention. `pixels[y][x]` indexes
 /// into `palette`; out-of-range indices are rejected by the loader as
 /// [`StorageError::Corrupt`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct Drawing {
     pub schema_version: u32,
     pub state: PetState,

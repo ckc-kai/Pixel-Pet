@@ -98,6 +98,9 @@ sandbox/
 # not a shared artifact in the repo.
 progress.md
 
+# ---------- Generated TS bindings (tauri-specta, debug builds only) ----------
+src/lib/types/bindings.ts
+
 # ---------- Misc ----------
 *.bak
 *.tmp
