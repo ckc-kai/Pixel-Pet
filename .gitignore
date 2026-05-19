@@ -1,0 +1,100 @@
+# ---------- macOS ----------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# ---------- IDE / Editor ----------
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# ---------- Claude Code / AI tooling local state ----------
+.claude/settings.local.json
+.claude/local/
+.claude/state/
+.claude/cache/
+
+# ---------- Node / pnpm / Vite ----------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.pnpm-store/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Rust / Cargo ----------
+target/
+src-tauri/target/
+**/*.rs.bk
+
+# ---------- Tauri ----------
+src-tauri/gen/
+src-tauri/WixTools/
+src-tauri/.cargo/config.toml
+*.app
+*.dmg
+*.pkg
+*.msi
+*.AppImage
+
+# ---------- Test / Coverage ----------
+coverage/
+.nyc_output/
+playwright-report/
+playwright/.cache/
+test-results/
+*.lcov
+
+# ---------- Env / Secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.cer
+*.mobileprovision
+*.p8
+secrets/
+.secrets/
+
+# ---------- Signing / Notarization (Apple) ----------
+*.entitlements.local
+notarization-*.json
+apple-credentials*
+appleid*.txt
+AuthKey_*.p8
+
+# ---------- Privacy: dev-time personal data ----------
+*.local
+personal/
+private/
+*-private/
+*.private
+drawings-dev/
+test-fixtures/personal/
+user-data/
+scratch/
+sandbox/
+
+# ---------- Misc ----------
+*.bak
+*.tmp
+.cache/
+.temp/
