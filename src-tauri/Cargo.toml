@@ -35,6 +35,12 @@ tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
 # Wall-clock for meal triggers
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 
+# Atomic file writes (NamedTempFile + persist) — used by persistence module per
+# docs/architecture.md §4.5. Already pinned in dev-dependencies for tests;
+# promoted to runtime deps because settings.rs / drawings.rs need it in
+# production paths.
+tempfile = "3"
+
 # NOTE: tauri-specta / specta dependencies are intentionally deferred to agent
 # A5 (see docs/agent-team-plan.md §4.5). Phase 0 keeps the dep tree minimal so
 # `cargo check` is fast; A5 will pin compatible versions when wiring the
