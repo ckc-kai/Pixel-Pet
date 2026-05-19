@@ -15,7 +15,7 @@ Pixel Pet is a macOS-first desktop companion: a hand-drawn pixel pet that lives 
 
 - **Shell:** Tauri 2.x
 - **Backend:** Rust — all OS-level work (activity detection, file I/O, tray, window mgmt)
-- **Frontend:** React 18 + TypeScript + Vite — UI only (pixel editor, pet render, settings)
+- **Frontend:** React 19 + TypeScript + Vite — UI only (pixel editor, pet render, settings)
 - **Package manager:** pnpm
 - **State:** React built-ins first. Introduce Zustand / Jotai only when prop drilling or context becomes painful — discuss before adding.
 

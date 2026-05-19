@@ -93,6 +93,11 @@ user-data/
 scratch/
 sandbox/
 
+# ---------- Session log (local-only, per project decision) ----------
+# Per CLAUDE.md §8, progress.md is a local logbook kept on each dev's machine,
+# not a shared artifact in the repo.
+progress.md
+
 # ---------- Misc ----------
 *.bak
 *.tmp
