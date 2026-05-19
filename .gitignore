@@ -103,3 +103,5 @@ progress.md
 *.tmp
 .cache/
 .temp/
+
+docs
