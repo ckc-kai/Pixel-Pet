@@ -1,5 +1,14 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const i=JSON.parse(d);const cmd=i.tool_input?.command||'';if(/\\bgit\\s+push\\b/.test(cmd)){console.error('[Hook] BLOCKED: git push requires pre-push review first.');console.error('Checklist: cargo test, clippy, fmt, grep unwrap/println/dbg, commit message format.');console.error('Report findings to user. User pushes — not Claude.');process.exit(2)}console.log(d)})\"",
+        "description": "Block git push — pre-push review required, user pushes"
+      }
+    ]
   }
 }

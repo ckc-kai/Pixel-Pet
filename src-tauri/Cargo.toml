@@ -1,16 +1,13 @@
 [package]
 name = "pixel-pet"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A macOS desktop pixel pet companion."
+authors = ["Kai Cheng"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# `_lib` suffix avoids a Windows linker collision with the bin name.
+# See https://github.com/rust-lang/cargo/issues/8519
 name = "pixel_pet_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -20,6 +17,48 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+
+# Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+
+# Error handling — libraries use thiserror per rules/rust/coding-style.md
+thiserror = "1"
+
+# Structured logging — never println!/dbg! in production paths
+tracing = "0.1"
+
+# Async runtime (tauri pulls tokio transitively; we name features for our own use)
+tokio = { version = "1", features = ["sync", "rt", "time", "macros"] }
+
+# Wall-clock for meal triggers
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+
+# Atomic file writes (NamedTempFile + persist) — used by persistence module per
+# docs/architecture.md §4.5. Already pinned in dev-dependencies for tests;
+# promoted to runtime deps because settings.rs / drawings.rs need it in
+# production paths.
+tempfile = "3"
+
+# Typed IPC bindings — generated at debug-build time into
+# `../src/lib/types/bindings.ts` (gitignored).
+#
+# Pinned to `2.0.0-rc` because tauri-specta v2 has not yet cut a stable
+# release; this is the upstream-recommended pin so patch RCs roll forward.
+# Spec said `"2"`, but Cargo's SemVer rules will not pick a pre-release for
+# the `2` requirement — see A5 report for context.
+specta = { version = "2.0.0-rc", features = ["derive"] }
+tauri-specta = { version = "2.0.0-rc", features = ["derive", "typescript"] }
+specta-typescript = "0.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# CGEventSource.secondsSinceLastEventType — see architecture.md §5.1.
+# Used by agent A3 in activity/macos.rs.
+core-graphics = "0.23"
+
+[dev-dependencies]
+tempfile = "3"
+rstest = "0.21"
+mockall = "0.13"
 
