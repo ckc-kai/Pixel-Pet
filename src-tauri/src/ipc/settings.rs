@@ -1,4 +1,11 @@
-//! Settings IPC commands. Owner: agent A5.
+//! Settings IPC commands.
+//!
+//! All disk operations are wrapped in `tokio::task::spawn_blocking` so the
+//! async executor is not stalled. `settings_patch` holds the `tokio::sync::Mutex`
+//! guard for the full merge → save → store cycle to prevent TOCTOU races
+//! between concurrent patch calls.
+
+use std::sync::Arc;
 
 use super::{merge_settings_patch, AppState, IpcError};
 use crate::config::{self, Settings};
@@ -7,11 +14,8 @@ use crate::persistence;
 /// Return the in-memory copy of `Settings`. Cheap (single mutex acquisition).
 #[tauri::command]
 #[specta::specta]
-pub fn settings_get(state: tauri::State<'_, AppState>) -> Result<Settings, IpcError> {
-    let guard = state.settings.lock().map_err(|err| {
-        tracing::error!(error = %err, "settings mutex poisoned");
-        IpcError::Internal
-    })?;
+pub async fn settings_get(state: tauri::State<'_, AppState>) -> Result<Settings, IpcError> {
+    let guard = state.settings.lock().await;
     Ok(guard.clone())
 }
 
@@ -20,14 +24,16 @@ pub fn settings_get(state: tauri::State<'_, AppState>) -> Result<Settings, IpcEr
 /// Returns the merged settings on success. Validation failure short-circuits
 /// the disk write — the in-memory copy is also left untouched.
 ///
+/// The mutex is held for the full merge → save → store sequence so concurrent
+/// calls cannot interleave and produce an inconsistent disk / memory state.
+///
 /// `patch_json` is a JSON-encoded `string` on the wire (rather than
 /// `serde_json::Value`) because specta v2.0.0-rc.25 has a stack-overflow bug
 /// in its `Value::definition` impl. Callers stringify a partial `Settings`
 /// shape with `JSON.stringify(patch)` before invoking; we parse it server-side.
-/// See `tests::apply_patch_*` for the merge semantics.
 #[tauri::command]
 #[specta::specta]
-pub fn settings_patch(
+pub async fn settings_patch(
     patch_json: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Settings, IpcError> {
@@ -36,23 +42,27 @@ pub fn settings_patch(
         IpcError::BadRequest("patch must be a JSON object".into())
     })?;
 
-    let merged = {
-        let guard = state.settings.lock().map_err(|err| {
-            tracing::error!(error = %err, "settings mutex poisoned");
-            IpcError::Internal
-        })?;
-        apply_patch(&guard, patch)?
-    };
+    // Hold the lock for the entire operation to prevent TOCTOU between
+    // concurrent patch calls. tokio::sync::Mutex is safe to hold across
+    // the spawn_blocking await point.
+    let mut guard = state.settings.lock().await;
+    let merged = apply_patch(&guard, patch)?;
 
-    persistence::settings::save_settings(state.data_dir.as_ref(), &merged).map_err(|err| {
+    let data_dir = Arc::clone(&state.data_dir);
+    let merged_for_save = merged.clone();
+    tokio::task::spawn_blocking(move || {
+        persistence::settings::save_settings(&data_dir, &merged_for_save)
+    })
+    .await
+    .map_err(|err| {
+        tracing::error!(error = %err, "settings_patch task panicked");
+        IpcError::Internal
+    })?
+    .map_err(|err| {
         tracing::error!(?err, "settings_patch save failed");
         IpcError::from(err)
     })?;
 
-    let mut guard = state.settings.lock().map_err(|err| {
-        tracing::error!(error = %err, "settings mutex poisoned");
-        IpcError::Internal
-    })?;
     *guard = merged.clone();
     Ok(merged)
 }

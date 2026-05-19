@@ -1,21 +1,24 @@
-//! Pet-state IPC commands. Owner: agent A5.
+//! Pet-state IPC commands.
 //!
-//! Each command is annotated with `#[specta::specta]` so `tauri-specta` can
-//! emit a typed TS binding. State lives in [`AppState`] (see `ipc/mod.rs`).
+//! All commands are `async` so `tokio::sync::Mutex` guards can be held
+//! across await points without blocking the executor.
+
+use std::sync::{atomic::Ordering, Arc};
 
 use tauri::ipc::Channel;
 
 use super::{AppState, IpcError};
 use crate::state::PetState;
 
+/// Maximum concurrent `pet_subscribe_state` subscriber tasks.
+/// Prevents unbounded task leaks on hot-reload or repeated subscribe calls.
+pub(super) const MAX_SUBSCRIBERS: usize = 4;
+
 /// Return the pet's current visible state.
 #[tauri::command]
 #[specta::specta]
-pub fn pet_get_state(state: tauri::State<'_, AppState>) -> Result<PetState, IpcError> {
-    let guard = state.pet_state.lock().map_err(|err| {
-        tracing::error!(error = %err, "pet_state mutex poisoned");
-        IpcError::Internal
-    })?;
+pub async fn pet_get_state(state: tauri::State<'_, AppState>) -> Result<PetState, IpcError> {
+    let guard = state.pet_state.lock().await;
     Ok(*guard)
 }
 
@@ -23,22 +26,33 @@ pub fn pet_get_state(state: tauri::State<'_, AppState>) -> Result<PetState, IpcE
 /// receives every change emitted via [`AppState::state_tx`] until either side
 /// is dropped.
 ///
-/// Returns immediately after spawning the forwarder task; the channel itself
-/// carries the stream.
+/// Returns immediately after spawning the forwarder task; state changes arrive
+/// via the channel asynchronously. The current state is sent once on
+/// subscription so the frontend does not have to poll for the initial value.
+///
+/// Returns [`IpcError::BadRequest`] if [`MAX_SUBSCRIBERS`] concurrent
+/// subscriber tasks are already active.
 #[tauri::command]
 #[specta::specta]
-pub fn pet_subscribe_state(
+pub async fn pet_subscribe_state(
     state: tauri::State<'_, AppState>,
     channel: Channel<PetState>,
 ) -> Result<(), IpcError> {
+    let prev = state.subscriber_count.fetch_add(1, Ordering::Relaxed);
+    if prev >= MAX_SUBSCRIBERS {
+        state.subscriber_count.fetch_sub(1, Ordering::Relaxed);
+        return Err(IpcError::BadRequest(
+            "subscriber limit reached; close the existing subscription first".into(),
+        ));
+    }
+
     let mut rx = state.state_tx.subscribe();
-    // Emit the current value immediately so subscribers don't wait for the
-    // first transition to learn the state.
     let current = *rx.borrow();
     if let Err(err) = channel.send(current) {
         tracing::error!(error = %err, "failed to seed pet_subscribe_state channel");
     }
 
+    let count = Arc::clone(&state.subscriber_count);
     tokio::spawn(async move {
         loop {
             if rx.changed().await.is_err() {
@@ -51,26 +65,23 @@ pub fn pet_subscribe_state(
                 break;
             }
         }
+        count.fetch_sub(1, Ordering::Relaxed);
     });
 
     Ok(())
 }
 
 /// Force a transition for debugging. Compiled out in release builds — the
-/// `#[cfg(debug_assertions)]` guard at registration time keeps the surface
-/// area honest.
+/// `#[cfg(debug_assertions)]` guard keeps the command surface honest.
 #[cfg(debug_assertions)]
 #[tauri::command]
 #[specta::specta]
-pub fn pet_force_transition(
+pub async fn pet_force_transition(
     target: PetState,
     state: tauri::State<'_, AppState>,
 ) -> Result<PetState, IpcError> {
     {
-        let mut guard = state.pet_state.lock().map_err(|err| {
-            tracing::error!(error = %err, "pet_state mutex poisoned");
-            IpcError::Internal
-        })?;
+        let mut guard = state.pet_state.lock().await;
         *guard = target;
     }
     if let Err(err) = state.state_tx.send(target) {

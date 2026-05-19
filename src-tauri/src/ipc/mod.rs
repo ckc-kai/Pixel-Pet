@@ -3,18 +3,14 @@
 //!
 //! **Privacy:** `IpcError` is flat by design. Internal `io::Error` /
 //! `serde_json::Error` detail is logged server-side via `tracing` but never
-//! serialized over the wire (CLAUDE.md §9).
-//!
-//! Phase 0 defines `IpcError` and the eight command stubs. Agent A5 wires
-//! them to real backends and adds `tauri-specta` for generated TS bindings
-//! (`docs/agent-team-plan.md` §4.5).
+//! serialized over the wire (CLAUDE.md §8).
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use serde::Serialize;
 use specta::Type;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex};
 
 use crate::config::Settings;
 use crate::state::PetState;
@@ -25,24 +21,22 @@ pub mod settings;
 
 /// Shared runtime state managed by Tauri (`.manage(AppState)`).
 ///
-/// Cloning is cheap — every field is `Arc`-wrapped, including the inner
-/// `Mutex`es. Wiring lives in `lib.rs::run()`.
-///
-/// The watch channel carries the latest [`PetState`] so `pet_subscribe_state`
-/// can fan out updates to the frontend without polling.
+/// All mutex fields use `tokio::sync::Mutex` so guards can be held safely
+/// across `.await` points inside async Tauri commands. `Arc` wrapping makes
+/// `AppState` cheaply cloneable without copying the underlying data.
 #[derive(Clone)]
 pub struct AppState {
-    /// Current visible pet state — kept here so IPC `pet_get_state` can read
-    /// it without consulting the FSM directly.
+    /// Current visible pet state.
     pub pet_state: Arc<Mutex<PetState>>,
     /// Active settings; mirrored on disk by `persistence::save_settings`.
     pub settings: Arc<Mutex<Settings>>,
-    /// Resolved per-platform application data directory. All persistence
-    /// helpers take this as their first argument.
+    /// Resolved per-platform application data directory.
     pub data_dir: Arc<PathBuf>,
-    /// Broadcast channel for `pet_subscribe_state`. The sender is held by
-    /// `AppState`; each subscribe call creates a new `Receiver`.
+    /// Broadcast channel for `pet_subscribe_state`.
     pub state_tx: watch::Sender<PetState>,
+    /// Active `pet_subscribe_state` subscriber task count.
+    /// Capped at [`pet::MAX_SUBSCRIBERS`] to prevent unbounded task leaks.
+    pub subscriber_count: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -53,17 +47,25 @@ impl AppState {
             settings: Arc::new(Mutex::new(settings)),
             data_dir: Arc::new(data_dir),
             state_tx,
+            subscriber_count: Arc::new(AtomicUsize::new(0)),
         }
     }
 }
 
 /// Wire-format error. Distinct from `StorageError` so the IPC layer owns the
 /// public contract and storage details never leak.
+///
+/// **Privacy (CLAUDE.md §8):**
+/// - `NotFound` carries **no message payload** — a caller-supplied string would
+///   be serialized to the frontend verbatim, risking filesystem-path leaks.
+///   Use `BadRequest` when a safe, user-readable diagnostic is needed.
+/// - `Storage` and `Internal` are opaque by design; full detail is logged
+///   server-side via `tracing::error!`.
 #[derive(Debug, thiserror::Error, Serialize, Type)]
 #[serde(tag = "kind", content = "message")]
 pub enum IpcError {
-    #[error("not found: {0}")]
-    NotFound(String),
+    #[error("not found")]
+    NotFound,
     #[error("invalid input: {0}")]
     BadRequest(String),
     #[error("storage failure")]
@@ -76,7 +78,7 @@ impl From<crate::persistence::StorageError> for IpcError {
     fn from(err: crate::persistence::StorageError) -> Self {
         use crate::persistence::StorageError as SE;
         match err {
-            SE::NotFound => IpcError::NotFound(String::new()),
+            SE::NotFound => IpcError::NotFound,
             SE::Validation(msg) => IpcError::BadRequest(msg),
             SE::Corrupt | SE::FutureVersion | SE::Io | SE::Encoding => IpcError::Storage,
         }

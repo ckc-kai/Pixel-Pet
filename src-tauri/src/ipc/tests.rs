@@ -204,10 +204,16 @@ fn ipc_error_storage_serializes_without_filesystem_detail() {
 }
 
 #[test]
-fn ipc_error_not_found_serializes_with_kind_and_message() {
-    let err = IpcError::NotFound("foo".into());
+fn ipc_error_not_found_has_no_message_payload() {
+    // NotFound carries no String payload — a caller-supplied string would be
+    // serialized verbatim to the frontend, risking filesystem-path leaks.
+    let err = IpcError::NotFound;
     let serialized = serde_json::to_string(&err).expect("serialize");
-    assert_eq!(serialized, r#"{"kind":"NotFound","message":"foo"}"#);
+    assert_eq!(serialized, r#"{"kind":"NotFound"}"#);
+    assert!(
+        !serialized.contains("message"),
+        "NotFound must not have a message field"
+    );
 }
 
 #[test]

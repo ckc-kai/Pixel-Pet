@@ -83,13 +83,21 @@ pub fn run() {
                 return Err(Box::new(err) as Box<dyn std::error::Error>);
             }
 
-            // Load settings (defaults if missing). Validation failures fall
-            // back to defaults rather than blocking startup — they're already
-            // logged at the persistence layer.
-            let settings = persistence::settings::load_settings(&data_dir).unwrap_or_else(|err| {
-                tracing::warn!(?err, "failed to load settings; using defaults");
-                config::Settings::default()
-            });
+            // Load settings (defaults if missing or invalid). We validate after
+            // loading so a hand-edited file with out-of-range values falls back
+            // to defaults rather than running with unclamped poll intervals.
+            let settings = persistence::settings::load_settings(&data_dir)
+                .and_then(|s| {
+                    config::validate(&s).map_err(|e| {
+                        tracing::warn!(error = ?e, "loaded settings failed validation; using defaults");
+                        crate::persistence::StorageError::Validation(e.to_string())
+                    })?;
+                    Ok(s)
+                })
+                .unwrap_or_else(|err| {
+                    tracing::warn!(?err, "failed to load settings; using defaults");
+                    config::Settings::default()
+                });
 
             // No persisted pet state yet — boot at Working. The FSM may emit
             // a Startup→Working transition on its first tick; until A6 wires
