@@ -7,4 +7,4 @@
 pub mod machine;
 pub mod states;
 
-pub use states::{Ctx, MealKind, PetState, Trigger};
+pub use states::{Ctx, MealKind, PetState, Trigger, WorkTier};

@@ -3,45 +3,22 @@
 //! Owner: agent A2. See `docs/architecture.md` §3 (especially §3.4 accumulator
 //! semantics and §3.5 transition table) and `docs/agent-team-plan.md` §4.2.
 //!
-//! # Design — tier markers
+//! # Phase 0 contract evolution (approved by team-lead)
 //!
-//! The FSM is **pure**: it owns no thresholds. Real thresholds (e.g.
-//! `stretch_at_minutes = 60`, `tired_at_minutes = 75`, …) live in `Settings`
-//! and are read by the orchestrator (agents A3/A5).
+//! `Trigger::AccumulatedActiveTime` was evolved from a `Duration` payload to a
+//! `WorkTier` payload (see `states.rs`). This keeps the FSM pure — real minute
+//! thresholds live in `Settings` and only `Ctx::tick` reads them — while
+//! letting the static transition table match the three Working-tier
+//! destinations directly on the tier variant.
 //!
-//! The transition table must, however, distinguish 3 destinations from
-//! `Working` on `Trigger::AccumulatedActiveTime` (→ `Stretch` / `Tired` /
-//! `Sleep`). Since `Trigger` only carries a `Duration` payload and we cannot
-//! change its enum shape, this module exposes opaque **tier markers** —
-//! [`TIER_STRETCH`], [`TIER_TIRED`], [`TIER_SLEEP`], [`TIER_SPACED_OUT`] —
-//! whose values are arbitrary identifiers (0/1/2/3 seconds) chosen to be
-//! deliberately unrealistic as real durations. The orchestrator reads
-//! `Settings` to decide *when* the accumulator has crossed a tier, then emits
-//! `Trigger::AccumulatedActiveTime(TIER_STRETCH)` (or `TIER_TIRED`/`TIER_SLEEP`).
-//!
-//! `Trigger::IdleFor(_)` does NOT use a tier marker — its payload is the real
-//! `spaced_out_idle_seconds` value emitted by [`Ctx::tick`]. There is only
-//! one destination (`SpacedOut`) per from-state for `IdleFor`, so the table
-//! matches by kind only and ignores the payload.
+//! `Trigger::IdleFor(Duration)` still carries the real `spaced_out_idle_seconds`
+//! value, but `step()` matches by variant only (IdleFor has a single
+//! destination per from-state).
 
 use std::time::Duration;
 
 use crate::activity::Activity;
-use crate::state::states::{Ctx, PetState, Trigger};
-
-// ---------------------------------------------------------------------------
-// Tier markers — opaque identifiers, NOT real thresholds.
-// ---------------------------------------------------------------------------
-
-/// Opaque marker for the Stretch tier crossing.
-pub const TIER_STRETCH: Duration = Duration::from_secs(0);
-/// Opaque marker for the Tired tier crossing.
-pub const TIER_TIRED: Duration = Duration::from_secs(1);
-/// Opaque marker for the Sleep tier crossing.
-pub const TIER_SLEEP: Duration = Duration::from_secs(2);
-/// Opaque marker for the SpacedOut idle tier (currently informational; the
-/// `IdleFor` arm of the FSM matches by kind only — see module doc).
-pub const TIER_SPACED_OUT: Duration = Duration::from_secs(3);
+use crate::state::states::{Ctx, PetState, Trigger, WorkTier};
 
 // ---------------------------------------------------------------------------
 // Trigger kind — payload-less mirror of `Trigger` for static table matching.
@@ -50,9 +27,9 @@ pub const TIER_SPACED_OUT: Duration = Duration::from_secs(3);
 /// Payload-less mirror of [`Trigger`] used as the table's matching key.
 ///
 /// The static [`TRANSITIONS`] table cannot store full `Trigger` values
-/// (they carry `Duration` / `PetState` / `MealKind` payloads), so each row
-/// matches by *kind*; payload-aware disambiguation happens in the per-row
-/// `guard` (see [`Transition::guard`]).
+/// (they carry `WorkTier` / `Duration` / `PetState` / `MealKind` payloads),
+/// so each row matches by *kind*; payload-aware disambiguation happens in
+/// the per-row `guard` (see [`Transition::guard`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TriggerKind {
     AppStartup,
@@ -89,12 +66,13 @@ impl TriggerKind {
 /// A single row in the FSM transition table.
 ///
 /// `to` may be `None` only for `ManualOverride` rows whose destination is
-/// taken from the trigger payload at match time.
+/// taken from the trigger payload at match time (handled in `step()` ahead
+/// of table iteration).
 pub struct Transition {
     pub from: PetState,
     pub trigger: TriggerKind,
     /// Optional guard. Receives both `&Ctx` (accumulator state) and the
-    /// original `&Trigger` (for payload-aware checks, e.g. tier marker).
+    /// original `&Trigger` (for payload-aware checks, e.g. tier variant).
     pub guard: Option<fn(&Ctx, &Trigger) -> bool>,
     /// Static destination, or `None` when the destination is derived from
     /// the trigger payload (e.g. `ManualOverride(target)`).
@@ -105,55 +83,39 @@ pub struct Transition {
 // Guard helpers — all expressed in terms of `Ctx` + `Trigger`.
 //
 // NB: these guards never reference real settings thresholds. They compare
-// the trigger payload to the opaque tier markers above. The FSM remains
-// pure; real thresholds live in `Settings`.
+// the trigger's `WorkTier` payload to the row's expected tier. The FSM
+// remains pure; real minute thresholds live in `Settings`.
 // ---------------------------------------------------------------------------
 
-fn is_tier(trigger: &Trigger, tier: Duration) -> bool {
-    matches!(trigger, Trigger::AccumulatedActiveTime(d) if *d == tier)
+fn is_tier(trigger: &Trigger, tier: WorkTier) -> bool {
+    matches!(trigger, Trigger::AccumulatedActiveTime(t) if *t == tier)
 }
 
-fn g_stretch_marker(_ctx: &Ctx, trigger: &Trigger) -> bool {
-    is_tier(trigger, TIER_STRETCH)
+fn g_stretch_tier(_ctx: &Ctx, trigger: &Trigger) -> bool {
+    is_tier(trigger, WorkTier::Stretch)
 }
 
-fn g_tired_marker(_ctx: &Ctx, trigger: &Trigger) -> bool {
-    is_tier(trigger, TIER_TIRED)
+fn g_tired_tier(_ctx: &Ctx, trigger: &Trigger) -> bool {
+    is_tier(trigger, WorkTier::Tired)
 }
 
-fn g_sleep_marker(_ctx: &Ctx, trigger: &Trigger) -> bool {
-    is_tier(trigger, TIER_SLEEP)
+fn g_sleep_tier(_ctx: &Ctx, trigger: &Trigger) -> bool {
+    is_tier(trigger, WorkTier::Sleep)
 }
 
-/// `Eating → Sleep` when the accumulator at the time of `EatingFinished`
-/// indicates the Sleep tier. We do NOT have a Settings threshold here —
-/// instead, the orchestrator stamps `ctx.active_seconds` based on the most
-/// recently observed tier marker via the `Ctx::tier_at_least_*` helpers,
-/// which compare the *seconds* the orchestrator set when it last emitted a
-/// tier-crossing `AccumulatedActiveTime`. See [`Ctx::tier_reached`] /
-/// [`Ctx::mark_tier`] below.
+/// `Eating → Sleep` on finish when the accumulator reached the Sleep tier.
 fn g_eating_to_sleep(ctx: &Ctx, _trigger: &Trigger) -> bool {
-    ctx.tier_reached() >= AccumulatorTier::Sleep
+    ctx.tier_reached() == Some(WorkTier::Sleep)
 }
 
+/// `Eating → Tired` on finish when the accumulator reached exactly Tired.
 fn g_eating_to_tired(ctx: &Ctx, _trigger: &Trigger) -> bool {
-    ctx.tier_reached() == AccumulatorTier::Tired
+    ctx.tier_reached() == Some(WorkTier::Tired)
 }
 
+/// `Eating → Working` on finish when below the Tired tier (None or Stretch).
 fn g_eating_to_working(ctx: &Ctx, _trigger: &Trigger) -> bool {
-    ctx.tier_reached() < AccumulatorTier::Tired
-}
-
-/// Tier ladder used by `Ctx` to record the highest accumulator tier reached
-/// in the current work session. Pure; no Settings access.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub enum AccumulatorTier {
-    /// Below the Stretch tier (fresh session or just reset).
-    #[default]
-    None,
-    Stretch,
-    Tired,
-    Sleep,
+    matches!(ctx.tier_reached(), None | Some(WorkTier::Stretch))
 }
 
 // ---------------------------------------------------------------------------
@@ -176,19 +138,19 @@ pub const TRANSITIONS: &[Transition] = &[
     Transition {
         from: PetState::Working,
         trigger: TriggerKind::AccumulatedActiveTime,
-        guard: Some(g_stretch_marker),
+        guard: Some(g_stretch_tier),
         to: Some(PetState::Stretch),
     },
     Transition {
         from: PetState::Working,
         trigger: TriggerKind::AccumulatedActiveTime,
-        guard: Some(g_tired_marker),
+        guard: Some(g_tired_tier),
         to: Some(PetState::Tired),
     },
     Transition {
         from: PetState::Working,
         trigger: TriggerKind::AccumulatedActiveTime,
-        guard: Some(g_sleep_marker),
+        guard: Some(g_sleep_tier),
         to: Some(PetState::Sleep),
     },
     Transition {
@@ -222,7 +184,7 @@ pub const TRANSITIONS: &[Transition] = &[
     Transition {
         from: PetState::Tired,
         trigger: TriggerKind::AccumulatedActiveTime,
-        guard: Some(g_sleep_marker),
+        guard: Some(g_sleep_tier),
         to: Some(PetState::Sleep),
     },
     Transition {
@@ -280,18 +242,17 @@ pub const TRANSITIONS: &[Transition] = &[
         to: Some(PetState::Working),
     },
 
-    // ── ManualOverride (debug builds only — see step()) ───────────────
-    // The row is present unconditionally; `step()` gates its honoring on
-    // `#[cfg(debug_assertions)]`. `to: None` signals "use trigger payload".
+    // ── ManualOverride placeholder ────────────────────────────────────
+    // The actual ManualOverride logic lives at the top of `step()` because
+    // it applies from any state and is gated by `#[cfg(debug_assertions)]`.
+    // This row keeps the §3.5 row count (18) accurate; `to: None` plus the
+    // step() short-circuit means the row is never selected by iteration.
     Transition {
         from: PetState::Startup,
         trigger: TriggerKind::ManualOverride,
         guard: None,
         to: None,
     },
-    // NB: ManualOverride from any from-state is handled in step() before
-    // table iteration, so a single row above is enough as a placeholder
-    // for table-row-count accounting (architecture.md §3.5 "any | … row).
 ];
 
 // ---------------------------------------------------------------------------
@@ -326,9 +287,22 @@ pub fn step(current: PetState, trigger: &Trigger, ctx: &Ctx) -> Option<PetState>
 // Ctx — accumulator semantics (architecture.md §3.4)
 // ---------------------------------------------------------------------------
 
+/// Threshold bundle for `Ctx::tick`. All values in seconds. Sourced from
+/// `Settings` by the caller (A3/A5) — A1 owns clamp/ordering validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Thresholds {
+    pub stretch_at_seconds: u32,
+    pub tired_at_seconds: u32,
+    pub sleep_at_seconds: u32,
+    pub spaced_out_idle_seconds: u32,
+}
+
 impl Ctx {
     /// Advance accumulators for a single poll tick and emit any triggers
     /// that fire as a result. Pure given inputs; no clock access.
+    ///
+    /// The `thresholds` arg is the only place real settings values enter
+    /// the FSM layer.
     ///
     /// Rules (architecture.md §3.4):
     /// * `Activity::Active` → `active_seconds += poll_interval_seconds`,
@@ -340,13 +314,19 @@ impl Ctx {
     ///   `active_seconds` UNCHANGED. When `idle_seconds >=
     ///   spaced_out_idle_seconds`, emits
     ///   `Trigger::IdleFor(spaced_out_idle_seconds)`.
-    /// * `Stretch` does NOT pause the active accumulator — see test
-    ///   `stretch_does_not_pause_accumulator`.
+    /// * `Stretch` does NOT pause the active accumulator.
+    /// * When the active accumulator first crosses a tier threshold this
+    ///   session, emits `Trigger::AccumulatedActiveTime(WorkTier::…)` and
+    ///   advances `self.tier`. At most one tier-crossing trigger per tick;
+    ///   if the tick jumps multiple tiers, only the highest is emitted
+    ///   (lower tiers are still recorded on `self.tier` history via the
+    ///   monotonic `>` comparison — but in practice a single 60 s poll
+    ///   cannot jump 15-minute-spaced tiers).
     pub fn tick(
         &mut self,
         activity: Activity,
         poll_interval_seconds: u32,
-        spaced_out_idle_seconds: u32,
+        thresholds: Thresholds,
         current_state: PetState,
     ) -> Vec<Trigger> {
         let mut triggers = Vec::new();
@@ -361,14 +341,18 @@ impl Ctx {
                         .saturating_add(u64::from(poll_interval_seconds));
                 }
                 triggers.push(Trigger::ActivityActive);
+
+                if let Some(tier) = self.advance_tier(thresholds) {
+                    triggers.push(Trigger::AccumulatedActiveTime(tier));
+                }
             }
             Activity::Idle => {
                 self.idle_seconds = self
                     .idle_seconds
                     .saturating_add(u64::from(poll_interval_seconds));
-                if self.idle_seconds >= u64::from(spaced_out_idle_seconds) {
+                if self.idle_seconds >= u64::from(thresholds.spaced_out_idle_seconds) {
                     triggers.push(Trigger::IdleFor(Duration::from_secs(u64::from(
-                        spaced_out_idle_seconds,
+                        thresholds.spaced_out_idle_seconds,
                     ))));
                 }
             }
@@ -377,17 +361,32 @@ impl Ctx {
         triggers
     }
 
-    /// Record that the orchestrator has emitted a tier-crossing trigger.
-    /// Used by `Eating → {Sleep,Tired,Working}` to re-evaluate at finish.
-    pub fn mark_tier(&mut self, tier: AccumulatorTier) {
-        if tier > self.tier {
-            self.tier = tier;
-        }
-    }
+    /// Compute the highest tier reachable at `self.active_seconds` and, if it
+    /// is strictly above `self.tier`, advance the latch and return the new
+    /// tier. Otherwise return `None`. Pure with respect to mutation of
+    /// other fields.
+    fn advance_tier(&mut self, thresholds: Thresholds) -> Option<WorkTier> {
+        let reachable = if self.active_seconds >= u64::from(thresholds.sleep_at_seconds) {
+            Some(WorkTier::Sleep)
+        } else if self.active_seconds >= u64::from(thresholds.tired_at_seconds) {
+            Some(WorkTier::Tired)
+        } else if self.active_seconds >= u64::from(thresholds.stretch_at_seconds) {
+            Some(WorkTier::Stretch)
+        } else {
+            None
+        };
 
-    /// Highest tier marker reached this work session.
-    pub fn tier_reached(&self) -> AccumulatorTier {
-        self.tier
+        match (reachable, self.tier) {
+            (Some(new), None) => {
+                self.tier = Some(new);
+                Some(new)
+            }
+            (Some(new), Some(curr)) if new > curr => {
+                self.tier = Some(new);
+                Some(new)
+            }
+            _ => None,
+        }
     }
 
     /// Reset accumulators on entering `SpacedOut` (architecture.md §3.4).
@@ -395,7 +394,7 @@ impl Ctx {
     pub fn reset_on_spaced_out(&mut self) {
         self.active_seconds = 0;
         self.idle_seconds = 0;
-        self.tier = AccumulatorTier::None;
+        self.tier = None;
     }
 
     /// Apply post-transition side effects in one call. Mirrors the spec's
@@ -422,6 +421,30 @@ mod tests {
         Ctx::default()
     }
 
+    // Canonical defaults from architecture.md §4.3 — used ONLY in tests, never
+    // in production code (the FSM reads thresholds from caller-supplied args).
+    const STRETCH_AT_S: u32 = 60 * 60;
+    const TIRED_AT_S: u32 = 75 * 60;
+    const SLEEP_AT_S: u32 = 90 * 60;
+    const SPACED_OUT_S: u32 = 15 * 60;
+
+    fn thresholds() -> Thresholds {
+        Thresholds {
+            stretch_at_seconds: STRETCH_AT_S,
+            tired_at_seconds: TIRED_AT_S,
+            sleep_at_seconds: SLEEP_AT_S,
+            spaced_out_idle_seconds: SPACED_OUT_S,
+        }
+    }
+
+    fn tick_active(c: &mut Ctx, poll: u32, state: PetState) -> Vec<Trigger> {
+        c.tick(Activity::Active, poll, thresholds(), state)
+    }
+
+    fn tick_idle(c: &mut Ctx, poll: u32, state: PetState) -> Vec<Trigger> {
+        c.tick(Activity::Idle, poll, thresholds(), state)
+    }
+
     // --- Row coverage: one positive test per row in §3.5 -------------------
 
     #[test]
@@ -433,11 +456,11 @@ mod tests {
     }
 
     #[test]
-    fn working_to_stretch_on_stretch_tier_marker() {
+    fn working_to_stretch_on_stretch_tier() {
         assert_eq!(
             step(
                 PetState::Working,
-                &Trigger::AccumulatedActiveTime(TIER_STRETCH),
+                &Trigger::AccumulatedActiveTime(WorkTier::Stretch),
                 &ctx()
             ),
             Some(PetState::Stretch)
@@ -445,11 +468,11 @@ mod tests {
     }
 
     #[test]
-    fn working_to_tired_on_tired_tier_marker() {
+    fn working_to_tired_on_tired_tier() {
         assert_eq!(
             step(
                 PetState::Working,
-                &Trigger::AccumulatedActiveTime(TIER_TIRED),
+                &Trigger::AccumulatedActiveTime(WorkTier::Tired),
                 &ctx()
             ),
             Some(PetState::Tired)
@@ -457,11 +480,11 @@ mod tests {
     }
 
     #[test]
-    fn working_to_sleep_on_sleep_tier_marker() {
+    fn working_to_sleep_on_sleep_tier() {
         assert_eq!(
             step(
                 PetState::Working,
-                &Trigger::AccumulatedActiveTime(TIER_SLEEP),
+                &Trigger::AccumulatedActiveTime(WorkTier::Sleep),
                 &ctx()
             ),
             Some(PetState::Sleep)
@@ -516,11 +539,11 @@ mod tests {
     }
 
     #[test]
-    fn tired_to_sleep_on_sleep_tier_marker() {
+    fn tired_to_sleep_on_sleep_tier() {
         assert_eq!(
             step(
                 PetState::Tired,
-                &Trigger::AccumulatedActiveTime(TIER_SLEEP),
+                &Trigger::AccumulatedActiveTime(WorkTier::Sleep),
                 &ctx()
             ),
             Some(PetState::Sleep)
@@ -582,7 +605,7 @@ mod tests {
     #[test]
     fn eating_to_sleep_when_tier_is_sleep() {
         let mut c = ctx();
-        c.mark_tier(AccumulatorTier::Sleep);
+        c.tier = Some(WorkTier::Sleep);
         assert_eq!(
             step(PetState::Eating, &Trigger::EatingFinished, &c),
             Some(PetState::Sleep)
@@ -592,7 +615,7 @@ mod tests {
     #[test]
     fn eating_to_tired_when_tier_is_tired() {
         let mut c = ctx();
-        c.mark_tier(AccumulatorTier::Tired);
+        c.tier = Some(WorkTier::Tired);
         assert_eq!(
             step(PetState::Eating, &Trigger::EatingFinished, &c),
             Some(PetState::Tired)
@@ -600,8 +623,8 @@ mod tests {
     }
 
     #[test]
-    fn eating_to_working_when_tier_below_tired() {
-        let c = ctx(); // tier defaults to None
+    fn eating_to_working_when_tier_is_none() {
+        let c = ctx();
         assert_eq!(
             step(PetState::Eating, &Trigger::EatingFinished, &c),
             Some(PetState::Working)
@@ -611,7 +634,7 @@ mod tests {
     #[test]
     fn eating_to_working_when_tier_is_stretch() {
         let mut c = ctx();
-        c.mark_tier(AccumulatorTier::Stretch);
+        c.tier = Some(WorkTier::Stretch);
         assert_eq!(
             step(PetState::Eating, &Trigger::EatingFinished, &c),
             Some(PetState::Working)
@@ -649,7 +672,7 @@ mod tests {
         assert_eq!(
             step(
                 PetState::Sleep,
-                &Trigger::AccumulatedActiveTime(TIER_SLEEP),
+                &Trigger::AccumulatedActiveTime(WorkTier::Sleep),
                 &ctx()
             ),
             None
@@ -670,7 +693,7 @@ mod tests {
     fn active_tick_advances_accumulator_and_clears_idle() {
         let mut c = ctx();
         c.idle_seconds = 42;
-        let triggers = c.tick(Activity::Active, 60, 900, PetState::Working);
+        let triggers = tick_active(&mut c, 60, PetState::Working);
         assert_eq!(c.active_seconds(), 60);
         assert_eq!(c.idle_seconds(), 0);
         assert!(triggers
@@ -683,7 +706,7 @@ mod tests {
         // Q3.7 — short idle does NOT reset or advance the active accumulator.
         let mut c = ctx();
         c.active_seconds = 1800;
-        let triggers = c.tick(Activity::Idle, 60, 900, PetState::Working);
+        let triggers = tick_idle(&mut c, 60, PetState::Working);
         assert_eq!(
             c.active_seconds(),
             1800,
@@ -696,12 +719,14 @@ mod tests {
     #[test]
     fn idle_tick_emits_idle_for_when_window_crossed() {
         let mut c = ctx();
-        c.idle_seconds = 840; // 14 min
-        let triggers = c.tick(Activity::Idle, 60, 900, PetState::Working);
-        assert_eq!(c.idle_seconds(), 900);
+        c.idle_seconds = u64::from(SPACED_OUT_S - 60); // 14 min
+        let triggers = tick_idle(&mut c, 60, PetState::Working);
+        assert_eq!(c.idle_seconds(), u64::from(SPACED_OUT_S));
         assert_eq!(
             triggers,
-            vec![Trigger::IdleFor(Duration::from_secs(900))],
+            vec![Trigger::IdleFor(Duration::from_secs(u64::from(
+                SPACED_OUT_S
+            )))],
             "must emit IdleFor exactly with the configured threshold"
         );
     }
@@ -711,11 +736,11 @@ mod tests {
         let mut c = ctx();
         c.active_seconds = 5400; // 90 min
         c.idle_seconds = 900;
-        c.mark_tier(AccumulatorTier::Sleep);
+        c.tier = Some(WorkTier::Sleep);
         c.on_entered(PetState::SpacedOut);
         assert_eq!(c.active_seconds(), 0);
         assert_eq!(c.idle_seconds(), 0);
-        assert_eq!(c.tier_reached(), AccumulatorTier::None);
+        assert_eq!(c.tier_reached(), None);
     }
 
     #[test]
@@ -733,8 +758,7 @@ mod tests {
         // transition fires on schedule.
         let mut c = ctx();
         c.active_seconds = 3540; // 59 min
-                                 // 30 seconds of activity while in Stretch state.
-        c.tick(Activity::Active, 30, 900, PetState::Stretch);
+        tick_active(&mut c, 30, PetState::Stretch);
         assert_eq!(
             c.active_seconds(),
             3570,
@@ -746,7 +770,7 @@ mod tests {
     fn eating_pauses_active_accumulator() {
         let mut c = ctx();
         c.active_seconds = 4500;
-        c.tick(Activity::Active, 60, 900, PetState::Eating);
+        tick_active(&mut c, 60, PetState::Eating);
         assert_eq!(
             c.active_seconds(),
             4500,
@@ -758,7 +782,7 @@ mod tests {
     fn multiple_active_ticks_accumulate() {
         let mut c = ctx();
         for _ in 0..5 {
-            c.tick(Activity::Active, 60, 900, PetState::Working);
+            tick_active(&mut c, 60, PetState::Working);
         }
         assert_eq!(c.active_seconds(), 300);
     }
@@ -766,22 +790,62 @@ mod tests {
     #[test]
     fn idle_then_active_clears_idle_but_preserves_active() {
         let mut c = ctx();
-        c.tick(Activity::Active, 60, 900, PetState::Working);
-        c.tick(Activity::Idle, 60, 900, PetState::Working);
-        c.tick(Activity::Idle, 60, 900, PetState::Working);
+        tick_active(&mut c, 60, PetState::Working);
+        tick_idle(&mut c, 60, PetState::Working);
+        tick_idle(&mut c, 60, PetState::Working);
         assert_eq!(c.active_seconds(), 60);
         assert_eq!(c.idle_seconds(), 120);
-        c.tick(Activity::Active, 60, 900, PetState::Working);
+        tick_active(&mut c, 60, PetState::Working);
         assert_eq!(c.active_seconds(), 120);
         assert_eq!(c.idle_seconds(), 0);
     }
 
+    // --- Tier emission semantics -------------------------------------------
+
     #[test]
-    fn tier_marker_is_monotonic() {
+    fn crossing_stretch_threshold_emits_stretch_tier_once() {
         let mut c = ctx();
-        c.mark_tier(AccumulatorTier::Sleep);
-        c.mark_tier(AccumulatorTier::Stretch); // attempt to downgrade
-        assert_eq!(c.tier_reached(), AccumulatorTier::Sleep);
+        c.active_seconds = u64::from(STRETCH_AT_S - 60);
+        let triggers = tick_active(&mut c, 60, PetState::Working);
+        assert!(triggers.contains(&Trigger::AccumulatedActiveTime(WorkTier::Stretch)));
+        assert_eq!(c.tier_reached(), Some(WorkTier::Stretch));
+
+        // Next tick — still in Stretch tier, should not re-emit.
+        let triggers = tick_active(&mut c, 60, PetState::Working);
+        assert!(!triggers
+            .iter()
+            .any(|t| matches!(t, Trigger::AccumulatedActiveTime(_))));
+    }
+
+    #[test]
+    fn crossing_tired_threshold_emits_tired_tier() {
+        let mut c = ctx();
+        c.active_seconds = u64::from(TIRED_AT_S - 60);
+        c.tier = Some(WorkTier::Stretch);
+        let triggers = tick_active(&mut c, 60, PetState::Working);
+        assert!(triggers.contains(&Trigger::AccumulatedActiveTime(WorkTier::Tired)));
+        assert_eq!(c.tier_reached(), Some(WorkTier::Tired));
+    }
+
+    #[test]
+    fn crossing_sleep_threshold_emits_sleep_tier() {
+        let mut c = ctx();
+        c.active_seconds = u64::from(SLEEP_AT_S - 60);
+        c.tier = Some(WorkTier::Tired);
+        let triggers = tick_active(&mut c, 60, PetState::Working);
+        assert!(triggers.contains(&Trigger::AccumulatedActiveTime(WorkTier::Sleep)));
+        assert_eq!(c.tier_reached(), Some(WorkTier::Sleep));
+    }
+
+    #[test]
+    fn tier_does_not_downgrade_after_idle() {
+        // Even if idle pauses active accumulator, tier latch stays put until
+        // SpacedOut reset.
+        let mut c = ctx();
+        c.active_seconds = u64::from(TIRED_AT_S);
+        c.tier = Some(WorkTier::Tired);
+        tick_idle(&mut c, 60, PetState::Tired);
+        assert_eq!(c.tier_reached(), Some(WorkTier::Tired));
     }
 
     // --- ManualOverride: debug-only -----------------------------------------

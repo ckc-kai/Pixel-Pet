@@ -5,8 +5,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::state::machine::AccumulatorTier;
-
 /// Visible pet state. Stays `Copy + Hash + Eq` so transition tables can use
 /// it directly as a key (see `machine::TRANSITIONS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -60,14 +58,33 @@ pub enum MealKind {
     Dinner,
 }
 
+/// Tier the active-time accumulator has reached. Lives in the trigger so the
+/// FSM table can match by tier without learning real Settings thresholds.
+///
+/// `PartialOrd`/`Ord` are `Stretch < Tired < Sleep` so guards can compare
+/// inequalities (e.g. "≥ Sleep tier").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkTier {
+    Stretch,
+    Tired,
+    Sleep,
+}
+
 /// Inputs that drive a state transition. The transition table in
 /// `machine::TRANSITIONS` matches against these.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Trigger {
     AppStartup,
     ActivityActive,
+    /// Idle ≥ `spaced_out_idle_seconds`. The `Duration` payload is the actual
+    /// configured threshold (informational); `step()` matches on the variant
+    /// only because IdleFor has a single destination per from-state.
     IdleFor(Duration),
-    AccumulatedActiveTime(Duration),
+    /// Active-time accumulator has crossed into the named tier. Carries the
+    /// tier directly so the FSM stays pure — real minute thresholds live in
+    /// `Settings` and are consumed only by `Ctx::tick`.
+    AccumulatedActiveTime(WorkTier),
     StretchAnimationFinished,
     EatingFinished,
     MealTime(MealKind),
@@ -88,12 +105,11 @@ pub struct Ctx {
     pub(crate) idle_seconds: u64,
     /// Most recent meal trigger fired, to debounce same-meal repeats.
     pub(crate) last_meal: Option<MealKind>,
-    /// Highest accumulator tier reached this work session — used by the
-    /// `Eating → {Sleep,Tired,Working}` re-evaluation since the FSM itself
-    /// holds no real thresholds. Set by the orchestrator (A3/A5) via
-    /// [`Ctx::mark_tier`] when emitting tier-crossing triggers; reset on
-    /// `SpacedOut` entry. See `machine.rs` module doc.
-    pub(crate) tier: AccumulatorTier,
+    /// Highest tier the accumulator has crossed this work session. Used by
+    /// `Eating → {Sleep,Tired,Working}` re-evaluation. Reset on `SpacedOut`
+    /// entry. Set by `Ctx::tick` when it emits an `AccumulatedActiveTime`
+    /// trigger.
+    pub(crate) tier: Option<WorkTier>,
 }
 
 impl Ctx {
@@ -107,5 +123,10 @@ impl Ctx {
 
     pub fn last_meal(&self) -> Option<MealKind> {
         self.last_meal
+    }
+
+    /// Highest tier crossed this work session (`None` = below Stretch).
+    pub fn tier_reached(&self) -> Option<WorkTier> {
+        self.tier
     }
 }
