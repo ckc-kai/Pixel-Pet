@@ -49,10 +49,27 @@ pub struct Settings {
     // uses to detect pre-versioned files (architecture.md §4.5).
     #[serde(default)]
     pub schema_version: u32,
+    pub setup: SetupSettings,
     pub activity: ActivitySettings,
     pub work: WorkSettings,
     pub meals: MealSettings,
     pub window: WindowSettings,
+}
+
+/// One-time and system-level flags (architecture.md §1.3, §4.3).
+///
+/// `drawing_confirmed` gates the startup window routing: false → show editor,
+/// true → show pet. It is set exactly once via `system_complete_drawing` and
+/// is intentionally not exposed in any settings UI (the editor is one-time).
+///
+/// `auto_start` and `do_not_disturb` are persisted here so the schema is
+/// stable; the UI wiring lands in Branch 2 (`feat/tray-and-settings`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct SetupSettings {
+    pub drawing_confirmed: bool,
+    pub auto_start: bool,
+    pub do_not_disturb: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -95,6 +112,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
+            setup: SetupSettings::default(),
             activity: ActivitySettings::default(),
             work: WorkSettings::default(),
             meals: MealSettings::default(),
@@ -254,6 +272,11 @@ mod tests {
             r#"
 schema_version = 1
 
+[setup]
+drawing_confirmed = true
+auto_start = false
+do_not_disturb = false
+
 [activity]
 idle_threshold_seconds = 90
 poll_interval_seconds = 30
@@ -280,6 +303,35 @@ size = 64
         let s = load_or_default(&path).expect("parses");
         assert_eq!(s.activity.idle_threshold_seconds, 90);
         assert_eq!(s.activity.poll_interval_seconds, 30);
+        assert!(s.setup.drawing_confirmed);
+        assert!(!s.setup.auto_start);
+    }
+
+    #[test]
+    fn setup_defaults_to_all_false() {
+        let s = Settings::default();
+        assert!(!s.setup.drawing_confirmed);
+        assert!(!s.setup.auto_start);
+        assert!(!s.setup.do_not_disturb);
+    }
+
+    #[test]
+    fn setup_section_missing_uses_defaults() {
+        // Forward-compat: a settings.toml predating the [setup] section must
+        // load cleanly with drawing_confirmed=false (i.e. show editor on next launch).
+        let dir = tempdir().expect("tempdir");
+        let path = write_settings(
+            dir.path(),
+            r#"
+schema_version = 1
+[activity]
+idle_threshold_seconds = 60
+poll_interval_seconds = 60
+spaced_out_idle_minutes = 15
+"#,
+        );
+        let s = load_or_default(&path).expect("parses");
+        assert_eq!(s.setup, SetupSettings::default());
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             ipc::editor::editor_list_states,
             ipc::settings::settings_get,
             ipc::settings::settings_patch,
+            ipc::system::system_complete_drawing,
         ])
     }
     #[cfg(not(debug_assertions))]
@@ -46,6 +47,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             ipc::editor::editor_list_states,
             ipc::settings::settings_get,
             ipc::settings::settings_patch,
+            ipc::system::system_complete_drawing,
         ])
     }
 }
@@ -104,6 +106,32 @@ pub fn run() {
             // the runtime loop, this is the safe default.
             let initial_state = PetState::Working;
 
+            // Window routing (architecture.md §1.3). Both windows are declared
+            // hidden in tauri.conf.json; we reveal exactly one based on whether
+            // the user has completed the one-time drawing ritual.
+            let target_label = if settings.setup.drawing_confirmed {
+                ipc::system::PET_WINDOW_LABEL
+            } else {
+                ipc::system::EDITOR_WINDOW_LABEL
+            };
+            match app.get_webview_window(target_label) {
+                Some(win) => {
+                    if let Err(err) = win.show() {
+                        tracing::error!(
+                            label = target_label,
+                            error = %err,
+                            "failed to show startup window"
+                        );
+                    }
+                }
+                None => {
+                    tracing::error!(
+                        label = target_label,
+                        "startup window label not registered in tauri.conf.json"
+                    );
+                }
+            }
+
             let app_state = AppState::new(initial_state, settings, data_dir);
             app.manage(app_state);
 
@@ -146,6 +174,7 @@ mod tests {
             "editorListStates",
             "settingsGet",
             "settingsPatch",
+            "systemCompleteDrawing",
         ] {
             assert!(
                 content.contains(cmd),
