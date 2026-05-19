@@ -107,15 +107,32 @@ Whenever you encounter:
 
 Before any push, run this checklist and **report the result to the user**. The user decides to push — not Claude.
 
+**Automated checks:**
 1. `cargo test --manifest-path src-tauri/Cargo.toml` — all green
 2. `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` — clean
 3. `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — clean
 4. `pnpm lint` + `pnpm tsc --noEmit` — clean (when frontend files changed)
 5. Grep for `unwrap()`, `expect()`, `println!`, `dbg!` in non-test production paths
 6. All commit messages follow Conventional Commit format (`feat:`, `fix:`, `perf:`, `refactor:`, `chore:`, `docs:`)
-7. Summarize findings → ask user "OK to push?"
+
+**White-box review — four angles (I run these before every push):**
+7. **Runnable** — new module's own tests pass; no panic paths in hot code; feature compiles end-to-end with the rest of the app
+8. **Compatibility** — grep callers of changed public APIs; IPC command signatures unchanged or additive only; TypeScript bindings regenerated if commands changed; no cross-module type mismatches
+9. **Performance** — compare new code against §2 budget; no blocking I/O on async executor; no JS animation loops added; no heavy dep introduced without approval
+10. **Dead code** — clippy unused-item warnings absent; no orphaned `TODO`/`FIXME`/`unimplemented!`; commented-out code blocks removed before merge
+
+Report all findings → ask user "OK to push?"
 
 A `PreToolUse` hook in `.claude/settings.json` physically blocks Bash `git push` calls as a backstop.
+
+### Testing split
+
+| Role | Tester | When |
+|---|---|---|
+| **White-box** — code review, static analysis, unit/integration tests, the 10-point pre-push checklist above | Claude | Every PR, pre-push |
+| **Black-box** — UX, visual fidelity, end-to-end feel as a real user | You | After the pixel editor feature is merged and the app opens for the first time |
+
+When the pixel editor feature lands and the app is runnable, I will surface a reminder: **"App is now openable — time for your black-box session."**
 
 ### Living documentation
 
