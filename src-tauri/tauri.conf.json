@@ -25,8 +25,8 @@
         "label": "pet",
         "title": "Pixel Pet",
         "url": "pet.html",
-        "width": 64,
-        "height": 64,
+        "width": 96,
+        "height": 96,
         "resizable": false,
         "visible": false,
         "decorations": false,
@@ -34,7 +34,8 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
-        "focus": false
+        "focus": false,
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

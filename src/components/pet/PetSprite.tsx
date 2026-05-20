@@ -1,4 +1,4 @@
-// Renders the user's base drawing into a canvas sized to the pet window.
+// Renders the user's base drawing into a canvas that fills its container.
 //
 // We use a <canvas> instead of a CSS grid of 1024 nodes because:
 //   - It paints in a single GPU upload, not per-cell.
@@ -9,13 +9,18 @@
 // The canvas is drawn once per drawing change. State-driven visuals
 // (filters, breathing, jitter) live on the parent .pet-sprite via CSS —
 // the canvas pixels never re-paint for animation.
+//
+// Display size is driven by CSS (100%) so the sprite always fills the
+// Tauri window regardless of its size (default 96×96, configurable in
+// Branch 2). The canvas's *internal* bitmap stays at the drawing's
+// native resolution (e.g. 32×32) and `image-rendering: pixelated`
+// preserves crisp edges when scaled up by CSS.
 
 import { useEffect, useRef } from "react";
 import type { Drawing } from "../../lib/types/bindings";
 
 interface PetSpriteProps {
   drawing: Drawing | null | undefined;
-  pixelSize: number;
 }
 
 /**
@@ -47,7 +52,7 @@ function parseColor(hex: string): [number, number, number, number] {
   return [r, g, b, a];
 }
 
-export function PetSprite({ drawing, pixelSize }: PetSpriteProps) {
+export function PetSprite({ drawing }: PetSpriteProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -80,15 +85,16 @@ export function PetSprite({ drawing, pixelSize }: PetSpriteProps) {
     ctx.putImageData(image, 0, 0);
   }, [drawing]);
 
-  // Display dimensions are driven by the window (pixelSize px square).
-  // The canvas's internal bitmap stays at the drawing's native size.
+  // Display dimensions are 100% so the sprite scales with the Tauri window.
+  // The canvas's internal bitmap stays at the drawing's native size; CSS
+  // `image-rendering: pixelated` preserves crisp pixel edges on scale.
   return (
     <canvas
       ref={canvasRef}
       className="pet-canvas"
       style={{
-        width: pixelSize,
-        height: pixelSize,
+        width: "100%",
+        height: "100%",
         imageRendering: "pixelated",
         display: "block",
       }}
