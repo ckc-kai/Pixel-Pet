@@ -15,8 +15,8 @@
       {
         "label": "editor",
         "title": "Pixel Pet — Draw Your Pet",
-        "width": 600,
-        "height": 500,
+        "width": 800,
+        "height": 720,
         "resizable": false,
         "visible": false,
         "decorations": true,

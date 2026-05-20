@@ -1,31 +1,34 @@
 /*
- * Game Boy / Famicom design tokens.
+ * Editor design tokens — cream palette (PR B).
  *
  * Two distinct palettes:
- * - UI chrome (--gb-*): the classic four-shade Game Boy DMG greens. Used for
- *   the editor's own surfaces, buttons, borders, and text.
+ * - UI chrome (semantic --bg/--surface/--text/etc.): the editor's own
+ *   surfaces, buttons, borders, and text. Warm cream + dark chocolate + retro
+ *   orange accent.
  * - Drawing palette (--art-*): the 16-slot palette the user paints with.
- *   Tasteful general-purpose set inspired by DB16 / NES. Slot 0 is reserved
- *   for transparent.
+ *   Tasteful general-purpose set inspired by DB16. Slot 0 is reserved for
+ *   transparent. INDEPENDENT of the chrome palette — never tie them together.
  *
  * Sizing tokens stay pixel-accurate (no rem fluidity) so the editor reads as
  * intentionally chunky rather than as scaled-down web UI.
  */
 
 :root {
-  /* Game Boy DMG chrome -------------------------------------------------- */
-  --gb-shade-0: #0f380f; /* darkest — outlines, text on light surfaces */
-  --gb-shade-1: #306230; /* deep green — secondary surfaces */
-  --gb-shade-2: #8bac0f; /* mid green — primary surfaces */
-  --gb-shade-3: #9bbc0f; /* light green — highlights, canvas backdrop */
+  /* Chrome palette (UI surfaces, text, accents) ------------------------- */
+  --bg: #faf6ee;            /* cream main background */
+  --surface: #ffffff;       /* card / canvas backdrop area */
+  --surface-sunk: #f2ecdf;  /* recessed panels (rail groups) */
+  --text: #3a2f1f;          /* dark chocolate for body text */
+  --text-muted: #6a5d4a;    /* secondary captions */
+  --accent: #d4623a;        /* retro orange — confirm button, highlights */
+  --accent-hover: #b94f29;
+  --border: #5a4a36;        /* warm dark for pixel borders */
+  --warn: #c23b1f;          /* warning red */
 
-  /* Semantic chrome aliases --------------------------------------------- */
-  --color-bg: var(--gb-shade-3);
-  --color-surface: var(--gb-shade-2);
-  --color-border: var(--gb-shade-0);
-  --color-text: var(--gb-shade-0);
-  --color-text-muted: var(--gb-shade-1);
-  --color-warning: #d63d2b;
+  /* Checker for the transparent canvas backdrop. Tuned to the cream palette
+     so the pattern reads as "transparent" without harshness. */
+  --checker-a: #ffffff;
+  --checker-b: #ece4d2;
 
   /* Pixel-step sizing --------------------------------------------------- */
   --px-1: 1px;
@@ -36,37 +39,52 @@
   --px-8: 8px;
   --px-12: 12px;
   --px-16: 16px;
+  --px-20: 20px;
   --px-24: 24px;
+  --px-32: 32px;
 
-  /* Canvas geometry ----------------------------------------------------- */
-  --canvas-cells: 32;
-  --canvas-scale: 10;
+  /* Canvas geometry — 64-cell grid, 8× display scale = 512 px on screen. */
+  --canvas-cells: 64;
+  --canvas-scale: 8;
   --canvas-size: calc(var(--canvas-cells) * var(--canvas-scale) * 1px);
 
-  /* Typography ---------------------------------------------------------- */
-  --font-pixel:
-    "VT323", "Press Start 2P", ui-monospace, "SF Mono", Menlo, Monaco,
-    "Courier New", monospace;
-  --font-size-sm: 12px;
-  --font-size-md: 14px;
-  --font-size-lg: 18px;
-  --font-size-xl: 22px;
+  /* Typography — macOS system rounded sans for body/UI (no web font fetch,
+     keeps the privacy contract clean). Monospace reserved for pixel-art
+     labels if any future surface wants it. */
+  --font-ui:
+    -apple-system, "SF Pro Rounded", "SF Pro Text", BlinkMacSystemFont,
+    system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", Menlo, Monaco, "Courier New", monospace;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 26px;
+  --font-size-2xl: 32px;
 
   /* Motion -------------------------------------------------------------- */
   --duration-fast: 90ms;
   --duration-medium: 220ms;
   --duration-slow: 520ms;
-  --ease-step: steps(4, end);
   --ease-out: cubic-bezier(0.2, 0.6, 0.2, 1);
 
   /* Pixel-border helpers (sharp box-shadow stacks, never border-radius) - */
-  --shadow-inset-pixel: inset 0 0 0 var(--px-2) var(--gb-shade-0);
+  --pixel-border: 2px;
+  --shadow-inset-pixel: inset 0 0 0 var(--pixel-border) var(--border);
   --shadow-pixel-raised:
-    0 var(--px-2) 0 0 var(--gb-shade-0),
-    inset 0 0 0 var(--px-2) var(--gb-shade-0);
+    0 var(--px-2) 0 0 var(--border),
+    inset 0 0 0 var(--pixel-border) var(--border);
   --shadow-pixel-pressed:
-    0 0 0 0 var(--gb-shade-0),
-    inset 0 0 0 var(--px-2) var(--gb-shade-0);
+    0 0 0 0 var(--border),
+    inset 0 0 0 var(--pixel-border) var(--border);
+  --shadow-accent-raised:
+    0 var(--px-3) 0 0 var(--accent-hover),
+    inset 0 0 0 var(--pixel-border) var(--border);
+  --shadow-accent-pressed:
+    0 0 0 0 var(--accent-hover),
+    inset 0 0 0 var(--pixel-border) var(--border);
 }
 
 /*
@@ -74,6 +92,7 @@
  * specially and never paints a hex. Slots 1–15 are a tasteful general set.
  *
  * If you change these, update DRAWING_PALETTE in editor/palette.ts to match.
+ * This list is INDEPENDENT of the UI chrome palette above.
  */
 :root {
   --art-00: transparent;

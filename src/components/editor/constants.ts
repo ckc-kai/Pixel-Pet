@@ -6,8 +6,15 @@
  */
 
 /** Canvas width/height in pixels (the user's drawing grid, not the rendered DOM size). */
-export const CANVAS_WIDTH = 32;
-export const CANVAS_HEIGHT = 32;
+export const CANVAS_WIDTH = 64;
+export const CANVAS_HEIGHT = 64;
+
+/**
+ * Maximum number of undo snapshots retained. When the stack would grow past
+ * this cap we drop the oldest entry — keeps memory bounded on a 64×64 grid
+ * even if the user paints for an extended session.
+ */
+export const UNDO_STACK_LIMIT = 50;
 
 /**
  * Drawing schema version. Must match `crate::config::SCHEMA_VERSION` on the

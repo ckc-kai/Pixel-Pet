@@ -1,7 +1,11 @@
 /*
- * Editor surface styles. Game Boy DMG aesthetic — sharp pixel borders via
- * box-shadow only, monospace pixel font, blocky buttons. No border-radius,
- * no gradient blobs, no shadcn/tailwind defaults.
+ * Editor surface styles — cream palette (PR B).
+ *
+ * Warm cream backdrop, dark chocolate text, retro-orange confirm button.
+ * Sharp pixel borders via box-shadow stacks (no border-radius, no gradient
+ * blobs, no shadcn defaults). System-rounded font for legibility; the
+ * "pixel art" character comes from the chunky borders and the canvas itself,
+ * not from a hard-to-read display font.
  */
 
 * {
@@ -14,21 +18,12 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-pixel);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
   font-size: var(--font-size-md);
-  -webkit-font-smoothing: none;
-  -moz-osx-font-smoothing: auto;
-  image-rendering: pixelated;
-  /* Subtle DMG screen scanline pattern. CSS-only, paint-cheap. */
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      rgba(15, 56, 15, 0) 0,
-      rgba(15, 56, 15, 0) 2px,
-      rgba(15, 56, 15, 0.05) 3px
-    );
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button {
@@ -41,8 +36,8 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--px-12);
-  padding: var(--px-16);
+  gap: var(--px-16);
+  padding: var(--px-20) var(--px-24) var(--px-24);
   min-height: 100vh;
   transition: opacity var(--duration-slow) var(--ease-out);
 }
@@ -59,23 +54,35 @@ button {
 
 .editor-title {
   margin: 0;
-  font-size: var(--font-size-xl);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .editor-subtitle {
+  margin: var(--px-6) 0 0;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0;
+}
+
+.editor-tip {
   margin: var(--px-4) 0 0;
   font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.editor-tip strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .editor-body {
   display: flex;
   flex-direction: row;
-  gap: var(--px-16);
+  gap: var(--px-20);
   align-items: flex-start;
   justify-content: center;
 }
@@ -84,8 +91,8 @@ button {
 
 .canvas-frame {
   padding: var(--px-4);
-  background: var(--gb-shade-1);
-  box-shadow: var(--shadow-inset-pixel);
+  background: var(--border);
+  box-shadow: var(--shadow-pixel-raised);
 }
 
 .canvas-grid {
@@ -94,22 +101,24 @@ button {
   display: grid;
   grid-template-columns: repeat(var(--canvas-cells), 1fr);
   grid-template-rows: repeat(var(--canvas-cells), 1fr);
-  /* Checker backdrop = "transparent" cue. CSS-only. */
-  background-color: var(--gb-shade-3);
+  /* Checker backdrop = "transparent" cue (Photoshop / Aseprite convention).
+     Pure CSS gradients, no images. */
+  background-color: var(--checker-a);
   background-image:
-    linear-gradient(45deg, var(--gb-shade-2) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--gb-shade-2) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--gb-shade-2) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--gb-shade-2) 75%);
-  background-size: 20px 20px;
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 8px 8px;
   background-position:
     0 0,
-    0 10px,
-    10px -10px,
-    -10px 0;
+    0 4px,
+    4px -4px,
+    -4px 0;
   cursor: crosshair;
   user-select: none;
   touch-action: none;
+  image-rendering: pixelated;
 }
 
 .canvas-cell {
@@ -124,24 +133,25 @@ button {
 .rail {
   display: flex;
   flex-direction: column;
-  gap: var(--px-12);
-  width: 200px;
+  gap: var(--px-16);
+  width: 208px;
 }
 
 .rail-group {
-  background: var(--color-surface);
+  background: var(--surface);
   box-shadow: var(--shadow-inset-pixel);
-  padding: var(--px-8);
+  padding: var(--px-12);
   display: flex;
   flex-direction: column;
-  gap: var(--px-8);
+  gap: var(--px-12);
 }
 
 .rail-label {
-  font-size: var(--font-size-sm);
-  letter-spacing: 0.12em;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-text);
+  color: var(--text-muted);
 }
 
 /* Palette ------------------------------------------------------------ */
@@ -169,30 +179,31 @@ button {
 }
 
 .palette-swatch:focus-visible {
-  outline: var(--px-2) solid var(--gb-shade-3);
+  outline: var(--px-2) solid var(--accent);
   outline-offset: var(--px-2);
 }
 
 .palette-swatch--transparent {
-  /* Crosshatch tells the user this slot is the eraser color. */
-  background:
-    linear-gradient(
-      45deg,
-      var(--gb-shade-3) 25%,
-      var(--gb-shade-2) 25%,
-      var(--gb-shade-2) 50%,
-      var(--gb-shade-3) 50%,
-      var(--gb-shade-3) 75%,
-      var(--gb-shade-2) 75%
-    );
+  /* Checker tells the user this slot is the eraser color. */
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
   background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
 }
 
 .palette-swatch--active::after {
   content: "";
   position: absolute;
   inset: calc(-1 * var(--px-3));
-  box-shadow: 0 0 0 var(--px-2) var(--gb-shade-0);
+  box-shadow: 0 0 0 var(--px-2) var(--accent);
   pointer-events: none;
 }
 
@@ -201,29 +212,31 @@ button {
 .tool-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--px-4);
+  gap: var(--px-6);
 }
 
 .tool-button,
 .action-button {
   font-family: inherit;
-  font-size: var(--font-size-md);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: var(--gb-shade-3);
-  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: var(--surface);
+  color: var(--text);
   padding: var(--px-8) var(--px-6);
   border: 0;
   cursor: pointer;
   box-shadow: var(--shadow-pixel-raised);
   transition:
     transform var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+    box-shadow var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 
 .tool-button:hover:not(:disabled),
 .action-button:hover:not(:disabled) {
   transform: translateY(-1px);
+  background: var(--surface-sunk);
 }
 
 .tool-button:active:not(:disabled),
@@ -234,19 +247,23 @@ button {
 
 .tool-button:focus-visible,
 .action-button:focus-visible {
-  outline: var(--px-2) solid var(--gb-shade-0);
+  outline: var(--px-2) solid var(--accent);
   outline-offset: var(--px-2);
 }
 
 .tool-button:disabled,
 .action-button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .tool-button--active {
-  background: var(--gb-shade-1);
-  color: var(--gb-shade-3);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.tool-button--active:hover:not(:disabled) {
+  background: var(--text);
 }
 
 /* ── Confirm ritual ─────────────────────────────────────────────────── */
@@ -256,30 +273,55 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--px-6);
-  padding-top: var(--px-12);
+  gap: var(--px-12);
+  padding-top: var(--px-8);
 }
 
 .confirm-warning {
   margin: 0;
-  font-size: var(--font-size-sm);
-  letter-spacing: 0.04em;
-  color: var(--color-warning);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--warn);
   text-align: center;
-  max-width: 480px;
+  max-width: 520px;
+  letter-spacing: 0;
 }
 
 .confirm-button {
+  font-family: inherit;
   font-size: var(--font-size-lg);
-  letter-spacing: 0.16em;
-  padding: var(--px-12) var(--px-24);
-  background: var(--gb-shade-0);
-  color: var(--gb-shade-3);
-  box-shadow: var(--shadow-pixel-raised);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: var(--px-16) var(--px-32);
+  background: var(--accent);
+  color: #ffffff;
+  border: 0;
+  cursor: pointer;
+  box-shadow: var(--shadow-accent-raised);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 
 .confirm-button:hover:not(:disabled) {
-  background: var(--gb-shade-1);
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.confirm-button:active:not(:disabled) {
+  transform: translateY(var(--px-3));
+  box-shadow: var(--shadow-accent-pressed);
+}
+
+.confirm-button:focus-visible {
+  outline: var(--px-3) solid var(--text);
+  outline-offset: var(--px-3);
+}
+
+.confirm-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* ── Status / errors ────────────────────────────────────────────────── */
@@ -287,13 +329,13 @@ button {
 .status-line {
   min-height: 1.5em;
   font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
+  color: var(--text-muted);
   text-align: center;
 }
 
 .status-line--error {
-  color: var(--color-warning);
+  color: var(--warn);
+  font-weight: 600;
 }
 
 /* Reduced motion ----------------------------------------------------- */
