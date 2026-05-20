@@ -1,0 +1,309 @@
+/*
+ * Editor surface styles. Game Boy DMG aesthetic — sharp pixel borders via
+ * box-shadow only, monospace pixel font, blocky buttons. No border-radius,
+ * no gradient blobs, no shadcn/tailwind defaults.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-pixel);
+  font-size: var(--font-size-md);
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: auto;
+  image-rendering: pixelated;
+  /* Subtle DMG screen scanline pattern. CSS-only, paint-cheap. */
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(15, 56, 15, 0) 0,
+      rgba(15, 56, 15, 0) 2px,
+      rgba(15, 56, 15, 0.05) 3px
+    );
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--px-12);
+  padding: var(--px-16);
+  min-height: 100vh;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.editor-shell--fading {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.editor-header {
+  text-align: center;
+  width: 100%;
+}
+
+.editor-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.editor-subtitle {
+  margin: var(--px-4) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.editor-body {
+  display: flex;
+  flex-direction: row;
+  gap: var(--px-16);
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* ── Canvas ─────────────────────────────────────────────────────────── */
+
+.canvas-frame {
+  padding: var(--px-4);
+  background: var(--gb-shade-1);
+  box-shadow: var(--shadow-inset-pixel);
+}
+
+.canvas-grid {
+  width: var(--canvas-size);
+  height: var(--canvas-size);
+  display: grid;
+  grid-template-columns: repeat(var(--canvas-cells), 1fr);
+  grid-template-rows: repeat(var(--canvas-cells), 1fr);
+  /* Checker backdrop = "transparent" cue. CSS-only. */
+  background-color: var(--gb-shade-3);
+  background-image:
+    linear-gradient(45deg, var(--gb-shade-2) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--gb-shade-2) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--gb-shade-2) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--gb-shade-2) 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas-cell {
+  /* No spacing — pixels are flush. */
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Side rail (palette + tools) ────────────────────────────────────── */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-12);
+  width: 200px;
+}
+
+.rail-group {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-inset-pixel);
+  padding: var(--px-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--px-8);
+}
+
+.rail-label {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+/* Palette ------------------------------------------------------------ */
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--px-4);
+}
+
+.palette-swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  background: var(--swatch-color);
+  box-shadow: var(--shadow-inset-pixel);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.palette-swatch:hover {
+  transform: translateY(-1px);
+}
+
+.palette-swatch:focus-visible {
+  outline: var(--px-2) solid var(--gb-shade-3);
+  outline-offset: var(--px-2);
+}
+
+.palette-swatch--transparent {
+  /* Crosshatch tells the user this slot is the eraser color. */
+  background:
+    linear-gradient(
+      45deg,
+      var(--gb-shade-3) 25%,
+      var(--gb-shade-2) 25%,
+      var(--gb-shade-2) 50%,
+      var(--gb-shade-3) 50%,
+      var(--gb-shade-3) 75%,
+      var(--gb-shade-2) 75%
+    );
+  background-size: 8px 8px;
+}
+
+.palette-swatch--active::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--px-3));
+  box-shadow: 0 0 0 var(--px-2) var(--gb-shade-0);
+  pointer-events: none;
+}
+
+/* Tools -------------------------------------------------------------- */
+
+.tool-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--px-4);
+}
+
+.tool-button,
+.action-button {
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--gb-shade-3);
+  color: var(--color-text);
+  padding: var(--px-8) var(--px-6);
+  border: 0;
+  cursor: pointer;
+  box-shadow: var(--shadow-pixel-raised);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.tool-button:hover:not(:disabled),
+.action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.tool-button:active:not(:disabled),
+.action-button:active:not(:disabled) {
+  transform: translateY(var(--px-2));
+  box-shadow: var(--shadow-pixel-pressed);
+}
+
+.tool-button:focus-visible,
+.action-button:focus-visible {
+  outline: var(--px-2) solid var(--gb-shade-0);
+  outline-offset: var(--px-2);
+}
+
+.tool-button:disabled,
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tool-button--active {
+  background: var(--gb-shade-1);
+  color: var(--gb-shade-3);
+}
+
+/* ── Confirm ritual ─────────────────────────────────────────────────── */
+
+.confirm-zone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--px-6);
+  padding-top: var(--px-12);
+}
+
+.confirm-warning {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.04em;
+  color: var(--color-warning);
+  text-align: center;
+  max-width: 480px;
+}
+
+.confirm-button {
+  font-size: var(--font-size-lg);
+  letter-spacing: 0.16em;
+  padding: var(--px-12) var(--px-24);
+  background: var(--gb-shade-0);
+  color: var(--gb-shade-3);
+  box-shadow: var(--shadow-pixel-raised);
+}
+
+.confirm-button:hover:not(:disabled) {
+  background: var(--gb-shade-1);
+}
+
+/* ── Status / errors ────────────────────────────────────────────────── */
+
+.status-line {
+  min-height: 1.5em;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.status-line--error {
+  color: var(--color-warning);
+}
+
+/* Reduced motion ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-shell,
+  .palette-swatch,
+  .tool-button,
+  .action-button,
+  .confirm-button {
+    transition: none;
+  }
+}

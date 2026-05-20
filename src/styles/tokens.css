@@ -1,0 +1,95 @@
+/*
+ * Game Boy / Famicom design tokens.
+ *
+ * Two distinct palettes:
+ * - UI chrome (--gb-*): the classic four-shade Game Boy DMG greens. Used for
+ *   the editor's own surfaces, buttons, borders, and text.
+ * - Drawing palette (--art-*): the 16-slot palette the user paints with.
+ *   Tasteful general-purpose set inspired by DB16 / NES. Slot 0 is reserved
+ *   for transparent.
+ *
+ * Sizing tokens stay pixel-accurate (no rem fluidity) so the editor reads as
+ * intentionally chunky rather than as scaled-down web UI.
+ */
+
+:root {
+  /* Game Boy DMG chrome -------------------------------------------------- */
+  --gb-shade-0: #0f380f; /* darkest — outlines, text on light surfaces */
+  --gb-shade-1: #306230; /* deep green — secondary surfaces */
+  --gb-shade-2: #8bac0f; /* mid green — primary surfaces */
+  --gb-shade-3: #9bbc0f; /* light green — highlights, canvas backdrop */
+
+  /* Semantic chrome aliases --------------------------------------------- */
+  --color-bg: var(--gb-shade-3);
+  --color-surface: var(--gb-shade-2);
+  --color-border: var(--gb-shade-0);
+  --color-text: var(--gb-shade-0);
+  --color-text-muted: var(--gb-shade-1);
+  --color-warning: #d63d2b;
+
+  /* Pixel-step sizing --------------------------------------------------- */
+  --px-1: 1px;
+  --px-2: 2px;
+  --px-3: 3px;
+  --px-4: 4px;
+  --px-6: 6px;
+  --px-8: 8px;
+  --px-12: 12px;
+  --px-16: 16px;
+  --px-24: 24px;
+
+  /* Canvas geometry ----------------------------------------------------- */
+  --canvas-cells: 32;
+  --canvas-scale: 10;
+  --canvas-size: calc(var(--canvas-cells) * var(--canvas-scale) * 1px);
+
+  /* Typography ---------------------------------------------------------- */
+  --font-pixel:
+    "VT323", "Press Start 2P", ui-monospace, "SF Mono", Menlo, Monaco,
+    "Courier New", monospace;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+
+  /* Motion -------------------------------------------------------------- */
+  --duration-fast: 90ms;
+  --duration-medium: 220ms;
+  --duration-slow: 520ms;
+  --ease-step: steps(4, end);
+  --ease-out: cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  /* Pixel-border helpers (sharp box-shadow stacks, never border-radius) - */
+  --shadow-inset-pixel: inset 0 0 0 var(--px-2) var(--gb-shade-0);
+  --shadow-pixel-raised:
+    0 var(--px-2) 0 0 var(--gb-shade-0),
+    inset 0 0 0 var(--px-2) var(--gb-shade-0);
+  --shadow-pixel-pressed:
+    0 0 0 0 var(--gb-shade-0),
+    inset 0 0 0 var(--px-2) var(--gb-shade-0);
+}
+
+/*
+ * Drawing palette (16 slots). Slot 0 is transparent — the editor treats it
+ * specially and never paints a hex. Slots 1–15 are a tasteful general set.
+ *
+ * If you change these, update DRAWING_PALETTE in editor/palette.ts to match.
+ */
+:root {
+  --art-00: transparent;
+  --art-01: #1a1c2c;
+  --art-02: #5d275d;
+  --art-03: #b13e53;
+  --art-04: #ef7d57;
+  --art-05: #ffcd75;
+  --art-06: #a7f070;
+  --art-07: #38b764;
+  --art-08: #257179;
+  --art-09: #29366f;
+  --art-10: #3b5dc9;
+  --art-11: #41a6f6;
+  --art-12: #73eff7;
+  --art-13: #f4f4f4;
+  --art-14: #94b0c2;
+  --art-15: #566c86;
+}
