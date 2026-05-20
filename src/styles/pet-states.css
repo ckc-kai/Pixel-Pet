@@ -7,16 +7,23 @@
  * NOT hardcode pixel sizes in CSS — the window can be any size (default
  * 96×96, configurable in Branch 2 settings) and the sprite must fill it.
  * Each state class lives on the sprite root and combines a filter (mood)
- * with a subtle keyframed transform (life). Overlays are positioned
- * children with their own keyframes.
+ * with a keyframed transform (life). Overlays are positioned children
+ * with their own keyframes, anchored to the user's drawing bbox so they
+ * track the pet, not the window corner.
  */
 
 /* ---------- Tokens (scoped to the pet window) ---------- */
 
 :root {
-  /* Animation timings — labeled with intent so they aren't anonymous magic numbers. */
-  --breathe-duration: 3s;
-  --stretch-duration: 30s;
+  /* Animation timings — labeled with intent so they aren't anonymous magic.
+     User feedback for PR C: states felt indistinguishable. Working sped
+     up, stretch shortened dramatically and switched to a rotation so
+     it reads at a glance. */
+  --breathe-duration: 2.5s;
+  --stretch-duration: 8s;
+  --tired-breathe-duration: 4.5s;
+  --sleep-breathe-duration: 4s;
+  --drift-duration: 8s;
   --eating-duration: 0.4s;
   --startup-duration: 600ms;
   --zzz-duration: 2.4s;
@@ -24,6 +31,15 @@
 
   --ease-soft: cubic-bezier(0.45, 0, 0.55, 1);
   --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Bbox fallback values. PetRenderer overrides these on .pet-root once
+     the drawing's mask has been computed; until then overlays sit in the
+     top-right of the window so we still render something on first paint. */
+  --pet-bbox-top: 6px;
+  --pet-bbox-right: 6px;
+  --pet-bbox-bottom: 0%;
+  --pet-bbox-left: 0%;
+  --pet-bbox-center-x: 50%;
 }
 
 /* ---------- Window canvas ---------- */
@@ -65,20 +81,27 @@ body,
 .pet-sprite {
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--pet-sprite-cells), 1fr);
-  grid-template-rows: repeat(var(--pet-sprite-cells), 1fr);
+  /* Keep the system body + user drawing perfectly stacked. */
+  display: block;
   transform-origin: 50% 100%; /* feet — wiggles feel grounded */
   will-change: transform, filter, opacity;
 }
 
-.pet-cell {
-  /* The cell itself is just a colored square; no per-cell animation. */
+/* The system body and user-pixel canvas both occupy the full sprite area.
+   They are absolutely-positioned siblings so they stack predictably and
+   share the parent's animation. */
+.pet-system-body,
+.pet-sprite > canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
 }
 
-/* ---------- State: working — gentle breathing ---------- */
+/* ---------- State: working — gentle breathing (bumped to 1.05) ---------- */
+/* User feedback PR C: 1.02 was too subtle to notice — bumped to 1.05
+   and tightened the cycle so the pet feels alive at a glance. */
 
 .pet-state-working .pet-sprite {
   animation: pet-breathe var(--breathe-duration) var(--ease-soft) infinite;
@@ -90,11 +113,14 @@ body,
     transform: scale(1);
   }
   50% {
-    transform: scale(1.02);
+    transform: scale(1.05);
   }
 }
 
-/* ---------- State: stretch — slow Y-axis stretch wiggle ---------- */
+/* ---------- State: stretch — rotate + scale (clearly distinct) ---------- */
+/* User feedback PR C: previous Y-stretch read exactly like a heavier
+   breathe. Rotation makes stretch instantly distinguishable from
+   working at a glance. */
 
 .pet-state-stretch .pet-sprite {
   animation: pet-stretch var(--stretch-duration) var(--ease-soft) infinite;
@@ -103,32 +129,63 @@ body,
 @keyframes pet-stretch {
   0%,
   100% {
-    transform: scaleY(1) scaleX(1);
+    transform: rotate(-8deg) scale(1);
   }
-  45% {
-    transform: scaleY(1.12) scaleX(0.94);
+  25% {
+    transform: rotate(0deg) scale(1.04);
   }
-  55% {
-    transform: scaleY(1.12) scaleX(0.94);
+  50% {
+    transform: rotate(8deg) scale(1.08);
   }
-  70% {
-    transform: scaleY(0.96) scaleX(1.04);
+  75% {
+    transform: rotate(0deg) scale(1.04);
   }
 }
 
-/* ---------- State: tired — desaturated + sweat drop ---------- */
+/* Stretch state: legs extend downward. The SystemBody groups legs into a
+   `.pet-body-legs` element with transform-origin at the top of the legs
+   so scaling Y reads as "legs extending" rather than legs ballooning. */
+.pet-state-stretch .pet-body-legs {
+  animation: pet-leg-extend var(--stretch-duration) var(--ease-soft) infinite;
+}
+
+@keyframes pet-leg-extend {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.4);
+  }
+}
+
+/* ---------- State: tired — droopier, darker, sweat ---------- */
+/* User feedback PR C: brightness 0.75 was barely visible. Drop to 0.6
+   and add a small droop (translateY) so the pet visibly sags. */
 
 .pet-state-tired .pet-sprite {
-  filter: brightness(0.75) saturate(0.7);
-  animation: pet-breathe calc(var(--breathe-duration) * 1.6) var(--ease-soft)
+  filter: brightness(0.6) saturate(0.6);
+  animation: pet-tired-droop var(--tired-breathe-duration) var(--ease-soft)
     infinite;
 }
 
-/* ---------- State: sleep — dim + zzz overlay ---------- */
+@keyframes pet-tired-droop {
+  0%,
+  100% {
+    transform: translateY(2px) scale(1);
+  }
+  50% {
+    transform: translateY(2px) scale(1.02);
+  }
+}
+
+/* ---------- State: sleep — dim, slow breath, zzz overlay ---------- */
+/* User feedback PR C: barely darker than tired. Push brightness down to
+   0.4 + add desaturation so sleep clearly reads as "off". */
 
 .pet-state-sleep .pet-sprite {
-  filter: brightness(0.45) grayscale(0.2);
-  animation: pet-snore 4s var(--ease-soft) infinite;
+  filter: brightness(0.4) grayscale(0.3) saturate(0.7);
+  animation: pet-snore var(--sleep-breathe-duration) var(--ease-soft) infinite;
 }
 
 @keyframes pet-snore {
@@ -137,32 +194,35 @@ body,
     transform: scale(1) translateY(0);
   }
   50% {
-    transform: scale(1.015) translateY(0.5px);
+    transform: scale(1.03) translateY(1px);
   }
 }
 
-/* ---------- State: spaced_out — washed out ---------- */
+/* ---------- State: spaced_out — washed out + horizontal drift ---------- */
 
 .pet-state-spaced_out .pet-sprite {
-  filter: saturate(0.3) opacity(0.65);
-  animation: pet-drift 6s var(--ease-soft) infinite;
+  filter: saturate(0.2) opacity(0.55);
+  animation: pet-drift var(--drift-duration) var(--ease-soft) infinite;
 }
 
 @keyframes pet-drift {
   0%,
   100% {
-    transform: translateX(0);
+    transform: translateX(-4px);
   }
   50% {
-    transform: translateX(0.5px);
+    transform: translateX(4px);
   }
 }
 
-/* ---------- State: eating — fast jitter on the lower half ---------- */
+/* ---------- State: eating — fast jitter around the mouth ---------- */
+/* User explicitly asked us NOT to touch this — it already reads well.
+   transform-origin keeps the motion centered on the lower half so the
+   system body's bottom doesn't shake nearly as much as the head. */
 
 .pet-state-eating .pet-sprite {
   animation: pet-chew var(--eating-duration) steps(2, end) infinite;
-  transform-origin: 50% 65%; /* mouth area */
+  transform-origin: 50% 65%;
 }
 
 @keyframes pet-chew {
@@ -203,10 +263,13 @@ body,
   image-rendering: pixelated;
 }
 
-/* Sweat drop — top-right, slow pulse */
+/* Sweat drop — tracks the top-right of the user's drawing bbox.
+   The bbox vars are written by PetRenderer; defaults at :root cover
+   the loading / empty-drawing case. The slight negative offsets pull
+   it just outside the head so it visually "sits beside" the pet. */
 .pet-overlay-sweat {
-  top: 6px;
-  right: 6px;
+  top: calc(var(--pet-bbox-top) - 2px);
+  right: calc(var(--pet-bbox-right) - 2px);
   width: 8px;
   height: 12px;
   animation: pet-sweat var(--sweat-duration) var(--ease-soft) infinite;
@@ -224,11 +287,13 @@ body,
   }
 }
 
-/* Zzz — floats up and fades. Three staggered glyphs. */
+/* Zzz — tracks the top of the user's drawing bbox. Pushed slightly
+   above the head and given a wider float distance vs PR B baseline so
+   the sleep state reads at a glance. */
 .pet-overlay-zzz {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: calc(var(--pet-bbox-top) - 18px);
+  right: calc(var(--pet-bbox-right) - 4px);
   width: 24px;
   height: 24px;
 }
@@ -264,16 +329,34 @@ body,
 
 @keyframes pet-zzz {
   0% {
-    transform: translateY(4px);
+    transform: translateY(6px);
     opacity: 0;
   }
   20% {
     opacity: 1;
   }
   100% {
-    transform: translateY(-10px);
+    transform: translateY(-16px);
     opacity: 0;
   }
+}
+
+/* ---------- System body (procedural) ---------- */
+/*
+ * Sits behind the user's drawing inside `.pet-sprite` so it inherits
+ * every state animation automatically. Only the legs need state-specific
+ * extra motion (`pet-leg-extend` above, scoped to stretch).
+ */
+
+.pet-system-body {
+  pointer-events: none;
+  /* SVG paths anti-alias on their own — image-rendering: auto here keeps
+     the rounded body from going jagged when the window is small. */
+  image-rendering: auto;
+}
+
+.pet-body-legs {
+  will-change: transform;
 }
 
 /* ---------- Reduced motion ---------- */
@@ -281,7 +364,8 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .pet-sprite,
   .pet-overlay,
-  .pet-overlay-zzz span {
+  .pet-overlay-zzz span,
+  .pet-body-legs {
     animation: none !important;
   }
 }
