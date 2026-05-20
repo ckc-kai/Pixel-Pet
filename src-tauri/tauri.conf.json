@@ -12,9 +12,28 @@
   "app": {
     "windows": [
       {
+        "label": "editor",
+        "title": "Pixel Pet — Draw Your Pet",
+        "width": 600,
+        "height": 500,
+        "resizable": false,
+        "visible": false,
+        "decorations": true,
+        "center": true
+      },
+      {
+        "label": "pet",
         "title": "Pixel Pet",
-        "width": 800,
-        "height": 600
+        "width": 64,
+        "height": 64,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "focus": false
       }
     ],
     "security": {

@@ -18,6 +18,7 @@ use crate::state::PetState;
 pub mod editor;
 pub mod pet;
 pub mod settings;
+pub mod system;
 
 /// Shared runtime state managed by Tauri (`.manage(AppState)`).
 ///
