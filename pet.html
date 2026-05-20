@@ -5,13 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pixel Pet</title>
     <style>
-      /* Transparent canvas — overridden by pet-states.css but kept here to
-         prevent a white flash before the stylesheet attaches. */
+      /* Transparent canvas. Belt + suspenders: pet-states.css applies the
+         same rules with !important, but inlining them here prevents a
+         white flash before that stylesheet attaches (the WebView seeds
+         opaque white as the default in dev mode on macOS). */
       html,
-      body {
+      body,
+      #root {
         margin: 0;
         padding: 0;
-        background: transparent;
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        background-color: transparent !important;
         overflow: hidden;
       }
     </style>

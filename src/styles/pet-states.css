@@ -3,19 +3,17 @@
  * Animated properties are restricted to transform/opacity/filter so the
  * compositor handles motion (CLAUDE.md §2, web/performance.md).
  *
- * The pet window is 64x64; the base sprite is 32x32 scaled 2x. Each state
- * class lives on the sprite root and combines a filter (mood) with a
- * subtle keyframed transform (life). Overlays are positioned children
- * with their own keyframes.
+ * The pet sprite scales to fill whatever size the Tauri window is. We do
+ * NOT hardcode pixel sizes in CSS — the window can be any size (default
+ * 96×96, configurable in Branch 2 settings) and the sprite must fill it.
+ * Each state class lives on the sprite root and combines a filter (mood)
+ * with a subtle keyframed transform (life). Overlays are positioned
+ * children with their own keyframes.
  */
 
 /* ---------- Tokens (scoped to the pet window) ---------- */
 
 :root {
-  --pet-size: 64px;
-  --pet-sprite-cells: 32;
-  --pet-cell-size: calc(var(--pet-size) / var(--pet-sprite-cells));
-
   /* Animation timings — labeled with intent so they aren't anonymous magic numbers. */
   --breathe-duration: 3s;
   --stretch-duration: 30s;
@@ -29,6 +27,13 @@
 }
 
 /* ---------- Window canvas ---------- */
+/*
+ * Force transparent everywhere so a stray default white background can't
+ * leak through. The `!important` is load-bearing: in dev mode the WebView
+ * occasionally seeds an opaque white default on macOS until the first
+ * stylesheet attaches, and StrictMode's double-mount can flash the
+ * default through. We keep belt + suspenders here.
+ */
 
 html,
 body,
@@ -37,7 +42,8 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
-  background: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
   overflow: hidden;
   /* Disable native text selection so dragging the pet doesn't pick text. */
   user-select: none;
@@ -48,8 +54,10 @@ body,
 
 .pet-root {
   position: relative;
-  width: var(--pet-size);
-  height: var(--pet-size);
+  /* Fill the Tauri window regardless of its dimensions. */
+  width: 100%;
+  height: 100%;
+  background: transparent;
   /* Children with transform are still pixel-snapped. */
   image-rendering: pixelated;
 }
@@ -276,6 +284,37 @@ body,
   .pet-overlay-zzz span {
     animation: none !important;
   }
+}
+
+/* ---------- Dev close button (debug-only, see PetCloseButton.tsx) ---------- */
+
+.pet-close-button {
+  position: fixed;
+  top: 2px;
+  right: 2px;
+  z-index: 10000; /* above .pet-dev-panel */
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f0f4f8;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  cursor: pointer;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1;
+  /* The pet renderer toggles cursor-events on transparent areas. The dev
+     buttons must always capture clicks regardless. */
+  pointer-events: auto;
+}
+
+.pet-close-button:hover {
+  background: rgba(160, 60, 60, 0.85);
+  border-color: rgba(255, 200, 200, 0.7);
 }
 
 /* ---------- Dev panel (debug-only, see PetDevPanel.tsx) ---------- */

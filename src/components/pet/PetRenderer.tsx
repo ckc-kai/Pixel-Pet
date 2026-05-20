@@ -14,19 +14,17 @@
 // throttles the hit-test handler, which is a pointer/coalescing concern,
 // not a render concern.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Drawing, PetState } from "../../lib/types/bindings";
 import { useDrawing } from "../../hooks/useDrawing";
 import { usePetState } from "../../hooks/usePetState";
+import { PetCloseButton } from "./PetCloseButton";
 import { PetDevPanel } from "./PetDevPanel";
 import { PetSprite } from "./PetSprite";
 import { StateOverlay } from "./StateOverlay";
 import "../../styles/pet-states.css";
 
-// Pet window is 64x64 (declared in tauri.conf.json). Kept in one place so
-// the renderer's hit-test math and the CSS canvas size stay in sync.
-const PET_WINDOW_SIZE_PX = 64;
 // State the renderer defaults to before the first IPC message arrives.
 // The backend seeds the channel on subscribe so this is only ever shown
 // for a few frames; keeping it as `working` (the canonical base) avoids a
@@ -77,6 +75,25 @@ export function PetRenderer() {
   const state = usePetState() ?? DEFAULT_STATE;
   const drawing = useDrawing("working");
 
+  // ---- Window dimensions (dynamic) -------------------------------------- //
+  //
+  // The Tauri window size is no longer hardcoded (was 64×64, now configurable
+  // via settings — default 96×96). Track innerWidth/innerHeight so the
+  // hit-test math stays correct if the user resizes via settings later.
+
+  const [winSize, setWinSize] = useState<{ w: number; h: number }>(() => ({
+    w: window.innerWidth || 1,
+    h: window.innerHeight || 1,
+  }));
+
+  useEffect(() => {
+    const onResize = () => {
+      setWinSize({ w: window.innerWidth || 1, h: window.innerHeight || 1 });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   // ---- Hit-mask -------------------------------------------------------- //
 
   const hitMask = useMemo(() => {
@@ -115,10 +132,10 @@ export function PetRenderer() {
       const ev = lastEventRef.current;
       if (!ev) return;
       // Map document coords → source-pixel coords via per-axis scale.
-      // We use the window inner size (fixed at PET_WINDOW_SIZE_PX) rather
-      // than reading layout to avoid forcing reflow.
-      const scaleX = width / PET_WINDOW_SIZE_PX;
-      const scaleY = height / PET_WINDOW_SIZE_PX;
+      // Reads from `winSize` (state) rather than the DOM to avoid forcing
+      // a reflow on every mousemove.
+      const scaleX = width / winSize.w;
+      const scaleY = height / winSize.h;
       const sx = Math.floor(ev.x * scaleX);
       const sy = Math.floor(ev.y * scaleY);
       if (sx < 0 || sy < 0 || sx >= width || sy >= height) {
@@ -158,7 +175,7 @@ export function PetRenderer() {
       win.setIgnoreCursorEvents(false).catch(() => {});
       ignoreRef.current = null;
     };
-  }, [hitMask]);
+  }, [hitMask, winSize.w, winSize.h]);
 
   // ---- Render ---------------------------------------------------------- //
 
@@ -171,10 +188,11 @@ export function PetRenderer() {
     <>
       <div className={`pet-root ${stateClass}`}>
         <div className="pet-sprite">
-          <PetSprite drawing={drawing} pixelSize={PET_WINDOW_SIZE_PX} />
+          <PetSprite drawing={drawing} />
         </div>
         <StateOverlay state={state} />
       </div>
+      <PetCloseButton />
       <PetDevPanel current={state} />
     </>
   );
