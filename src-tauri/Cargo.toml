@@ -15,7 +15,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `macos-private-api` is required for transparent windows on macOS. Without
+# it, `transparent: true` silently fails and the window renders white. See
+# tauri.conf.json > app.macOSPrivateApi and Tauri 2 docs on transparency.
+# Trade-off: apps using this feature cannot ship through the Mac App Store,
+# which matches Pixel Pet's direct-distribution plan (no notarization for MVP).
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 
 # Serialization
