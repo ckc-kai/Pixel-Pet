@@ -129,7 +129,10 @@ export function EditorRoot() {
       <header className="editor-header">
         <h1 className="editor-title">Draw Your Pet</h1>
         <p className="editor-subtitle">
-          32 × 32 pixels · 16 colors · one-time ritual
+          64 × 64 pixels · 16 colors · one-time ritual
+        </p>
+        <p className="editor-tip">
+          Tip: draw a <strong>head AND body</strong> for the best animations.
         </p>
       </header>
 
