@@ -24,6 +24,7 @@
       {
         "label": "pet",
         "title": "Pixel Pet",
+        "url": "pet.html",
         "width": 64,
         "height": 64,
         "resizable": false,
