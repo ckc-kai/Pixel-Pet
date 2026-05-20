@@ -5,9 +5,14 @@
 //   2. Load the user's "working" drawing once (via useDrawing("working")).
 //      All 7 states render from the same base — non-working states are
 //      visual derivations (filter + overlay), not separate drawings.
-//   3. Drive click-through: when the cursor sits over a transparent pixel
-//      of the drawing, ask the window to ignore cursor events so clicks
-//      pass through to the apps underneath.
+//   3. Compute a hit-mask + bbox of the user's opaque pixels:
+//        - Hit-mask drives click-through (cursor over transparent → window
+//          ignores pointer events so clicks pass through to apps below).
+//        - Bbox positions overlays (sweat / zzz) and sizes the procedural
+//          system body so they track the actual drawn area instead of the
+//          window corner.
+//   4. Render the layered sprite stack: system body (back), user drawing
+//      (front), state overlay (positioned via CSS custom properties).
 //
 // CSS handles every visual animation (see styles/pet-states.css). No
 // requestAnimationFrame is used for paint. The single rAF in this file
@@ -23,6 +28,7 @@ import { PetCloseButton } from "./PetCloseButton";
 import { PetDevPanel } from "./PetDevPanel";
 import { PetSprite } from "./PetSprite";
 import { StateOverlay } from "./StateOverlay";
+import { SystemBody, type Bbox } from "./SystemBody";
 import "../../styles/pet-states.css";
 
 // State the renderer defaults to before the first IPC message arrives.
@@ -71,6 +77,38 @@ function buildHitMask(drawing: Drawing): Uint8Array {
   return mask;
 }
 
+/**
+ * Bounding box of opaque pixels (`mask[i] === 1`). Returns `null` when
+ * the drawing is entirely transparent — callers should fall back to
+ * fixed positioning in that case.
+ *
+ * `maxX` / `maxY` are exclusive, matching slice/range conventions —
+ * `bbox.maxX - bbox.minX` is the width in source pixels.
+ */
+function computeBbox(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+): Bbox | null {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    const rowStart = y * width;
+    for (let x = 0; x < width; x += 1) {
+      if (mask[rowStart + x]) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return null;
+  return { minX, maxX: maxX + 1, minY, maxY: maxY + 1 };
+}
+
 export function PetRenderer() {
   const state = usePetState() ?? DEFAULT_STATE;
   const drawing = useDrawing("working");
@@ -94,12 +132,32 @@ export function PetRenderer() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // ---- Hit-mask -------------------------------------------------------- //
+  // ---- Hit-mask + bbox -------------------------------------------------- //
 
   const hitMask = useMemo(() => {
     if (!drawing) return null;
-    return { mask: buildHitMask(drawing), width: drawing.width, height: drawing.height };
+    const mask = buildHitMask(drawing);
+    const bbox = computeBbox(mask, drawing.width, drawing.height);
+    return { mask, width: drawing.width, height: drawing.height, bbox };
   }, [drawing]);
+
+  // CSS custom properties drive overlay positioning so the sprite owns
+  // the bbox knowledge and CSS just consumes percentages. When no bbox
+  // is available (drawing loading / empty), the overlay falls back to a
+  // fixed corner via its CSS default values.
+  const bboxStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (!hitMask?.bbox) return undefined;
+    const { bbox, width, height } = hitMask;
+    return {
+      "--pet-bbox-top": `${(bbox.minY / height) * 100}%`,
+      "--pet-bbox-right": `${((width - bbox.maxX) / width) * 100}%`,
+      "--pet-bbox-bottom": `${((height - bbox.maxY) / height) * 100}%`,
+      "--pet-bbox-left": `${(bbox.minX / width) * 100}%`,
+      "--pet-bbox-center-x": `${
+        ((bbox.minX + bbox.maxX) / 2 / width) * 100
+      }%`,
+    } as React.CSSProperties;
+  }, [hitMask]);
 
   // ---- Click-through --------------------------------------------------- //
   //
@@ -183,11 +241,15 @@ export function PetRenderer() {
   // filter. CSS owns the visual — the React tree never re-renders for
   // animation frames.
   const stateClass = `pet-state-${state}`;
+  const bbox = hitMask?.bbox ?? null;
 
   return (
     <>
-      <div className={`pet-root ${stateClass}`}>
+      <div className={`pet-root ${stateClass}`} style={bboxStyle}>
         <div className="pet-sprite">
+          {/* System body sits BEHIND the user's drawing so the user's
+              pixels always read as the pet's face. */}
+          <SystemBody drawing={drawing} bbox={bbox} />
           <PetSprite drawing={drawing} />
         </div>
         <StateOverlay state={state} />

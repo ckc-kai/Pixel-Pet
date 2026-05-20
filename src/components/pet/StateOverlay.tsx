@@ -1,9 +1,14 @@
 // Per-state overlay decorations.
 //
-// Most states are visual-only (filter + keyframe on the base sprite). The
-// two that have extra pixel personality:
-//   - `tired`  → a small sweat drop pixel cluster, top-right
+// Two states have extra pixel personality on top of the base sprite:
+//   - `tired`  → a small sweat drop pixel cluster
 //   - `sleep`  → a stack of zzz glyphs floating up and fading
+//
+// Positioning: the overlays read the `--pet-bbox-*` CSS custom properties
+// set on `.pet-root` by PetRenderer. That lets the sweat drop track the
+// top-right of the actually-drawn pixels instead of the window corner.
+// When no bbox is available (drawing still loading / empty drawing), the
+// CSS defaults fall back to a fixed corner so we still render something.
 //
 // Overlays are CSS-animated. They never re-render based on time.
 
