@@ -1,51 +1,43 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+/**
+ * Root component. Both Tauri windows (`editor`, `pet`) load the same JS
+ * bundle, so we route by the current webview window label.
+ *
+ * - `editor` label → one-time pixel editor (this PR).
+ * - `pet` label    → PR 1.3 owns the surface in `src/components/pet/*`.
+ *                   Until that lands, render a transparent placeholder so the
+ *                   pet window isn't a white rectangle on first dual-window
+ *                   bring-up.
+ */
+
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+
+import { EditorRoot } from "./components/editor/EditorRoot";
+import "./styles/tokens.css";
+import "./styles/editor.css";
+
+const EDITOR_WINDOW_LABEL = "editor";
+
+function resolveWindowLabel(): string {
+  try {
+    return getCurrentWebviewWindow().label;
+  } catch {
+    // Running outside Tauri (e.g. plain `vite dev` for component tinkering).
+    // Default to the editor surface — it's the only thing this PR provides.
+    return EDITOR_WINDOW_LABEL;
+  }
+}
+
+const WINDOW_LABEL = resolveWindowLabel();
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  if (WINDOW_LABEL === EDITOR_WINDOW_LABEL) {
+    return <EditorRoot />;
   }
 
-  return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
-  );
+  // Pet window placeholder. PR 1.3 will replace this branch with the real
+  // <PetSurface /> import. Transparent so it composes with the borderless
+  // always-on-top pet window declared in tauri.conf.json.
+  return <div aria-hidden="true" style={{ background: "transparent" }} />;
 }
 
 export default App;
